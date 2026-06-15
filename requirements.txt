@@ -1,0 +1,13 @@
+# Cattle Re-ID — replicación Li, Erickson & Xiong (2022)
+# Versiones fijadas para reproducibilidad.
+#
+# NOTA Kaggle: las imágenes de Kaggle ya traen torch/torchvision preinstalados
+# (normalmente compatibles con estas versiones). Si hay conflicto, NO reinstalar
+# torch en Kaggle: usar el preinstalado y fijar solo las libs puras de abajo.
+torch==2.2.2
+torchvision==0.17.2
+scikit-learn==1.4.2
+numpy==1.26.4
+pandas==2.2.2
+Pillow==10.3.0
+tqdm==4.66.4

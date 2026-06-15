@@ -1,2 +1,25 @@
+# ---- Datasets (NUNCA commitear) ----
 Cattely-Cattle-Face-Images-Dataset-main
 BeefCattle_Muzzle_database.zip
+data_local/
+data/
+
+# ---- Outputs pesados ----
+outputs/checkpoints/
+outputs/logs/
+# Sí versionamos las métricas finales (CSV/JSON) y los splits:
+!outputs/results/
+!outputs/splits/
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+.venv/
+venv/
+env/
+
+# ---- SO / editor ----
+.DS_Store
+*.swp
