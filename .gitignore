@@ -1,25 +1,85 @@
+# =====================================================================
+# Cattle Re-ID — .gitignore
+# Regla de oro: al repo van SOLO código + docs + métricas livianas.
+# Nada de datasets, imágenes, videos, checkpoints, credenciales ni binarios.
+# =====================================================================
+
 # ---- Datasets (NUNCA commitear) ----
-Cattely-Cattle-Face-Images-Dataset-main
+Cattely-Cattle-Face-Images-Dataset-main/
 BeefCattle_Muzzle_database.zip
 data_local/
 data/
+datasets/
 
-# ---- Outputs pesados ----
+# ---- Red de seguridad por extensión (datos / media / archivos pesados) ----
+# Por si alguna imagen o zip cae fuera de las carpetas de arriba.
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.gif
+*.tif
+*.tiff
+*.mp4
+*.mov
+*.avi
+
+# ---- Pesos / checkpoints / artefactos de modelos (pueden escribirse en cualquier lado) ----
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.h5
+*.pb
+*.npy
+*.npz
+*.pkl
+
+# ---- Outputs del pipeline ----
 outputs/checkpoints/
 outputs/logs/
-# Sí versionamos las métricas finales (CSV/JSON) y los splits:
+# Sí versionamos las métricas finales (CSV/JSON) y los splits (reproducibilidad).
+# Como arriba ignoramos por carpeta puntual y no 'outputs/' entero, results/ y
+# splits/ quedan trackeados por defecto. Estas negaciones son redundantes pero
+# explícitas:
 !outputs/results/
 !outputs/splits/
+
+# ---- Credenciales / secretos (NUNCA) ----
+kaggle.json
+.env
+*.env
+*.key
+*.pem
+credentials.json
 
 # ---- Python ----
 __pycache__/
 *.py[cod]
+*$py.class
 *.egg-info/
+.eggs/
+build/
+dist/
 .ipynb_checkpoints/
 .venv/
 venv/
 env/
+.python-version
 
-# ---- SO / editor ----
-.DS_Store
+# ---- Editores / IDE ----
+.idea/
+.vscode/
 *.swp
+*.swo
+
+# ---- Sistema operativo ----
+.DS_Store
+Thumbs.db
+*.log
