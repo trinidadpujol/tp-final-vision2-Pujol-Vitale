@@ -44,6 +44,7 @@ datasets/
 # ---- Outputs del pipeline ----
 outputs/checkpoints/
 outputs/logs/
+outputs/aug_cache/          # imágenes sintéticas precomputadas (scripts/04), pesadas
 # Sí versionamos las métricas finales (CSV/JSON) y los splits (reproducibilidad).
 # Como arriba ignoramos por carpeta puntual y no 'outputs/' entero, results/ y
 # splits/ quedan trackeados por defecto. Estas negaciones son redundantes pero

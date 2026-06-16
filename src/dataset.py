@@ -111,23 +111,42 @@ def build_augmented_entries(entries: list[dict],
     return extra
 
 
+def load_augmented_manifest(cache_dir: Path = config.AUG_CACHE_DIR) -> list[dict] | None:
+    """Devuelve el manifest de imágenes sintéticas precomputadas, o None si no existe."""
+    mp = Path(cache_dir) / "aug_manifest.json"
+    return load_json(mp) if mp.is_file() else None
+
+
 def make_train_loader(entries: list[dict], *, use_aug: bool, clean_tf, aug_tf,
                       seed: int = 0,
                       batch_size: int = config.BATCH_SIZE,
                       num_workers: int = config.NUM_WORKERS,
                       cap: int = config.AUG_TARGET_CAP,
-                      factor: int = config.AUG_FACTOR) -> DataLoader:
+                      factor: int = config.AUG_FACTOR,
+                      use_precomputed: bool = True,
+                      aug_cache_dir: Path = config.AUG_CACHE_DIR) -> DataLoader:
     """Loader de train.
 
     - `use_aug=False`: originales con transform limpio (variantes ce / wce).
     - `use_aug=True` (PAPER): originales limpios + copias sintéticas aumentadas → el dataset
       se AGRANDA, no se reemplaza. Así el modelo sigue viendo las imágenes a brillo real
       (evita el mismatch train/test) y gana variedad en las clases con pocas imágenes.
+
+    Para las copias sintéticas, si `use_precomputed` y existe el manifest de
+    `scripts/04_precompute_aug.py`, se usan las imágenes FIJAS de disco (transform limpio,
+    ya están aumentadas). Si no, se generan online con `aug_tf` (fallback; p.ej. en smoke).
     """
     clean_ds = MuzzleDataset(entries, transform=clean_tf)
     if not use_aug:
         return _make_loader(clean_ds, shuffle=True, batch_size=batch_size, num_workers=num_workers)
-    extra = build_augmented_entries(entries, cap=cap, factor=factor, seed=seed)
-    aug_ds = MuzzleDataset(extra, transform=aug_tf)
+
+    manifest = load_augmented_manifest(aug_cache_dir) if use_precomputed else None
+    if manifest is not None:
+        # Precomputado: imágenes ya aumentadas en disco → solo resize + ToTensor.
+        aug_ds = MuzzleDataset(manifest, transform=clean_tf, data_dir=aug_cache_dir)
+    else:
+        # Fallback online: aumentar al vuelo (mismo criterio de expansión).
+        extra = build_augmented_entries(entries, cap=cap, factor=factor, seed=seed)
+        aug_ds = MuzzleDataset(extra, transform=aug_tf)
     train_ds = ConcatDataset([clean_ds, aug_ds])
     return _make_loader(train_ds, shuffle=True, batch_size=batch_size, num_workers=num_workers)

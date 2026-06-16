@@ -95,7 +95,9 @@ def train_one_run(rc: RunConfig, device: str | None = None,
     val_e = _maybe_subset(load_split("val"), rc.max_val)
     train_loader = make_train_loader(train_e, use_aug=rc.use_aug, clean_tf=clean_tf,
                                      aug_tf=aug_tf, seed=rc.seed,
-                                     batch_size=rc.batch_size, num_workers=rc.num_workers)
+                                     batch_size=rc.batch_size, num_workers=rc.num_workers,
+                                     # con subset (smoke) NO usar el cache precomputado del set completo
+                                     use_precomputed=(rc.max_train is None))
     val_loader = make_dataloader(val_e, clean_tf, shuffle=False,
                                  batch_size=rc.batch_size, num_workers=rc.num_workers)
     log.info(f"train imgs: {len(train_loader.dataset):,} (use_aug={rc.use_aug}) | "

@@ -70,6 +70,7 @@ SPLITS_DIR = OUTPUTS_DIR / "splits"
 CHECKPOINTS_DIR = OUTPUTS_DIR / "checkpoints"
 RESULTS_DIR = OUTPUTS_DIR / "results"
 LOGS_DIR = OUTPUTS_DIR / "logs"
+AUG_CACHE_DIR = OUTPUTS_DIR / "aug_cache"   # imágenes sintéticas precomputadas (ver scripts/04)
 
 # --------------------------------------------------------------------------- #
 # Dataset (valores verificados por conteo de archivos en Fase 0; coinciden con el paper)

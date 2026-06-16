@@ -31,14 +31,7 @@ def build_transforms(train: bool,
 
     if train:
         # PAPER: augmentation solo en train.
-        blur_choices = [transforms.GaussianBlur(kernel_size=k)
-                        for k in config.AUG_BLUR_KERNELS]
-        ops += [
-            transforms.RandomHorizontalFlip(p=0.5),
-            transforms.ColorJitter(brightness=config.AUG_BRIGHTNESS),
-            transforms.RandomRotation(config.AUG_ROTATION_DEG),
-            transforms.RandomChoice(blur_choices),
-        ]
+        ops += _aug_ops()
 
     # ToTensor: PIL [0,255] -> tensor [0,1]. Esta es la normalización del paper.
     ops.append(transforms.ToTensor())
@@ -48,3 +41,28 @@ def build_transforms(train: bool,
                                         std=config.IMAGENET_STD))
 
     return transforms.Compose(ops)
+
+
+def _aug_ops() -> list:
+    """Ops de data augmentation del paper (flip / brillo / rotación / blur), nivel PIL.
+
+    Compartido entre `build_transforms(train=True)` y `build_pil_aug_transform` (precompute)
+    para que el augmentation se defina en un solo lugar.
+    """
+    blur_choices = [transforms.GaussianBlur(kernel_size=k)
+                    for k in config.AUG_BLUR_KERNELS]
+    return [
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.ColorJitter(brightness=config.AUG_BRIGHTNESS),
+        transforms.RandomRotation(config.AUG_ROTATION_DEG),
+        transforms.RandomChoice(blur_choices),
+    ]
+
+
+def build_pil_aug_transform(image_size: int = config.IMAGE_SIZE) -> transforms.Compose:
+    """Resize + augmentation, SIN ToTensor → devuelve una imagen PIL.
+
+    Para precomputar las imágenes sintéticas a disco (scripts/04_precompute_aug.py):
+    se aplica una vez y se guarda el resultado como archivo.
+    """
+    return transforms.Compose([transforms.Resize((image_size, image_size)), *_aug_ops()])

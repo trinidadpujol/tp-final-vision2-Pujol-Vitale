@@ -103,6 +103,11 @@ pocas imágenes se duplican o suben hasta 20, las de ≥20 no se tocan. Resultad
 **3187 → 4675 imgs (1.47×)**, 234/268 clases expandidas. Implementado en
 `dataset.make_train_loader` / `build_augmented_entries`.
 
+Las copias sintéticas se **precomputan a disco** una vez (`scripts/04_precompute_aug.py`
+→ `outputs/aug_cache/`), igual que el paper la describe como *"preprocessing step"*: el
+conjunto sintético queda FIJO (no varía por época), reproducible e inspeccionable. Si el
+cache no existe (p.ej. smoke), se cae a augmentation online equivalente.
+
 **Qué es nuestro vs del paper:** el *método* (aditivo, expandir clases chicas) es del
 paper; el *multiplicador exacto* `min(20, 2·N_i)` es decisión nuestra (el paper no da el
 número de imágenes sintéticas por clase) — elegido para acotar el costo de cómputo en la
