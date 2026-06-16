@@ -42,6 +42,11 @@ def _find_dataset_dir() -> Path:
         candidates += list(kaggle_input.glob(f"*/{_DATASET_DIRNAME}"))
         # por si el slug ya ES el dataset
         candidates += list(kaggle_input.glob(f"*/*/{_DATASET_DIRNAME}"))
+        # fallback recursivo: el mount puede estar más profundo, p.ej.
+        # /kaggle/input/datasets/<user>/<slug>/BeefCattle_Muzzle_Individualized
+        deep = next(kaggle_input.rglob(_DATASET_DIRNAME), None)
+        if deep is not None:
+            candidates.append(deep)
 
     # 3. Local: data_local/ en la raíz del proyecto o en repos padre (worktree).
     for base in [PROJECT_ROOT, *PROJECT_ROOT.parents]:
@@ -157,6 +162,11 @@ def _find_pretrained_dir() -> Path | None:
         # carpeta de Kaggle que contenga el .pth (en cualquier nivel razonable)
         candidates += [p.parent for p in kaggle_input.glob(f"*/{any_file}")]
         candidates += [p.parent for p in kaggle_input.glob(f"*/*/{any_file}")]
+        # fallback recursivo: el mount puede estar más profundo
+        # (/kaggle/input/datasets/<user>/<slug>/...).
+        deep = next(kaggle_input.rglob(any_file), None)
+        if deep is not None:
+            candidates.append(deep.parent)
 
     for base in [PROJECT_ROOT, *PROJECT_ROOT.parents]:
         candidates.append(base / "pretrained_weights")
