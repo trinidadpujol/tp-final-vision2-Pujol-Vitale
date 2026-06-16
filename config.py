@@ -103,6 +103,14 @@ AUG_BRIGHTNESS = (0.2, 0.5)   # ColorJitter brightness factor.
 AUG_ROTATION_DEG = 15         # RandomRotation [-15, +15].
 AUG_BLUR_KERNELS = (1, 3, 5)  # GaussianBlur kernel ∈ {1,3,5}.
 
+# Augmentation ADITIVA (ver DEVIATIONS D4). PAPER: la augmentation "crea imágenes
+# sintéticas y agranda el dataset", MANTENIENDO los originales (sobre todo para las
+# clases con pocas imágenes). NO reemplaza cada imagen como el augmentation online típico.
+# Por clase se expande hasta min(AUG_TARGET_CAP, AUG_FACTOR * N_i) agregando copias
+# aumentadas; las clases con >= AUG_TARGET_CAP imágenes no se tocan.
+AUG_TARGET_CAP = 20   # NOSOTROS: tope de imágenes por clase tras expandir.
+AUG_FACTOR = 2        # NOSOTROS: como mucho duplicar las imágenes de la clase.
+
 # --------------------------------------------------------------------------- #
 # Entrenamiento (PAPER)
 # --------------------------------------------------------------------------- #

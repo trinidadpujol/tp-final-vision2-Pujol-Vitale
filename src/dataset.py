@@ -11,11 +11,13 @@ Diseño preparado para la fase futura de embeddings: `MuzzleDataset` devuelve
 """
 from __future__ import annotations
 
+import random
+from collections import defaultdict
 from pathlib import Path
 
 import torch
 from PIL import Image
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import ConcatDataset, DataLoader, Dataset
 
 import config
 from src.utils import load_json
@@ -57,12 +59,8 @@ def load_split(split_name: str, splits_dir: Path = config.SPLITS_DIR) -> list[di
     return load_json(path)
 
 
-def make_dataloader(entries: list[dict], transform, *, shuffle: bool,
-                    batch_size: int = config.BATCH_SIZE,
-                    num_workers: int = config.NUM_WORKERS,
-                    return_path: bool = False) -> DataLoader:
-    """Construye un DataLoader sobre un split ya cargado."""
-    ds = MuzzleDataset(entries, transform=transform, return_path=return_path)
+def _make_loader(ds, *, shuffle: bool, batch_size: int, num_workers: int) -> DataLoader:
+    """DataLoader sobre un Dataset ya construido (helper compartido)."""
     # persistent_workers: con 50 épocas evita recrear los workers en cada época
     # (solo aplica si num_workers > 0). No cambia datos ni resultados, solo velocidad.
     extra = {}
@@ -78,3 +76,58 @@ def make_dataloader(entries: list[dict], transform, *, shuffle: bool,
         drop_last=False,
         **extra,
     )
+
+
+def make_dataloader(entries: list[dict], transform, *, shuffle: bool,
+                    batch_size: int = config.BATCH_SIZE,
+                    num_workers: int = config.NUM_WORKERS,
+                    return_path: bool = False) -> DataLoader:
+    """Construye un DataLoader sobre un split ya cargado (un solo transform para todo)."""
+    ds = MuzzleDataset(entries, transform=transform, return_path=return_path)
+    return _make_loader(ds, shuffle=shuffle, batch_size=batch_size, num_workers=num_workers)
+
+
+def build_augmented_entries(entries: list[dict],
+                            cap: int = config.AUG_TARGET_CAP,
+                            factor: int = config.AUG_FACTOR,
+                            seed: int = 0) -> list[dict]:
+    """Entradas EXTRA a sintetizar por clase para agrandar el dataset.
+
+    PAPER: la augmentation "crea imágenes sintéticas y agranda el dataset", sobre todo para
+    las clases con pocas imágenes, MANTENIENDO los originales. Por clase se expande hasta
+    `min(cap, factor * N_i)`; devuelve solo las copias EXTRA (los originales se agregan
+    aparte con transform limpio). El muestreo es determinista por `seed` (reproducibilidad).
+    """
+    by_label: dict[int, list[dict]] = defaultdict(list)
+    for e in entries:
+        by_label[e["label"]].append(e)
+    rng = random.Random(seed)
+    extra: list[dict] = []
+    for label, items in sorted(by_label.items()):
+        n = len(items)
+        n_add = max(0, min(cap, factor * n) - n)
+        for _ in range(n_add):
+            extra.append(rng.choice(items))
+    return extra
+
+
+def make_train_loader(entries: list[dict], *, use_aug: bool, clean_tf, aug_tf,
+                      seed: int = 0,
+                      batch_size: int = config.BATCH_SIZE,
+                      num_workers: int = config.NUM_WORKERS,
+                      cap: int = config.AUG_TARGET_CAP,
+                      factor: int = config.AUG_FACTOR) -> DataLoader:
+    """Loader de train.
+
+    - `use_aug=False`: originales con transform limpio (variantes ce / wce).
+    - `use_aug=True` (PAPER): originales limpios + copias sintéticas aumentadas → el dataset
+      se AGRANDA, no se reemplaza. Así el modelo sigue viendo las imágenes a brillo real
+      (evita el mismatch train/test) y gana variedad en las clases con pocas imágenes.
+    """
+    clean_ds = MuzzleDataset(entries, transform=clean_tf)
+    if not use_aug:
+        return _make_loader(clean_ds, shuffle=True, batch_size=batch_size, num_workers=num_workers)
+    extra = build_augmented_entries(entries, cap=cap, factor=factor, seed=seed)
+    aug_ds = MuzzleDataset(extra, transform=aug_tf)
+    train_ds = ConcatDataset([clean_ds, aug_ds])
+    return _make_loader(train_ds, shuffle=True, batch_size=batch_size, num_workers=num_workers)

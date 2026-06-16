@@ -81,7 +81,36 @@ levemente el tiempo por época y el redondeo numérico de bajo nivel, no la meto
 
 ---
 
-## D4 — (reservado)
+## D4 — Data augmentation ADITIVA (corrección hacia el método del paper)
+
+**Brillo: NO hay desviación.** El paper dice textual: *"the brightness factor was set from
+0.2 to 0.5 (minimum = 0, maximum = 1)"*. O sea oscurece al 20–50% a propósito. Nuestro
+`ColorJitter(brightness=(0.2,0.5))` lo hace igual. El valor es fiel.
+
+**Bug que tuvimos (y corregimos):** el paper describe la augmentation como *"a technique to
+create synthesized images and increase limited datasets"* → **crea imágenes sintéticas y
+AGRANDA el dataset, manteniendo los originales** (sobre todo para las clases con pocas
+imágenes). Nuestra primera versión usaba el augmentation online típico de PyTorch, que
+**REEMPLAZA** cada imagen por una versión aumentada en cada época. Con el brillo 0.2–0.5,
+eso dejaba TODO el train oscuro (medido: ~3.5× más oscuro que val/test) y el modelo nunca
+veía las imágenes a brillo real → mismatch sistemático train/test → la variante `ce_aug`
+**colapsó** (test ~0.20 vs ~0.96 de `ce`; train 0.83 / val 0.17).
+
+**Fix (faithful):** augmentation **aditiva**. Se mantienen los originales con transform
+limpio (resize + ToTensor) y se **agregan** copias sintéticas aumentadas. Por clase se
+expande hasta `min(AUG_TARGET_CAP, AUG_FACTOR·N_i)` (= `min(20, 2·N_i)`): las clases con
+pocas imágenes se duplican o suben hasta 20, las de ≥20 no se tocan. Resultado: train
+**3187 → 4675 imgs (1.47×)**, 234/268 clases expandidas. Implementado en
+`dataset.make_train_loader` / `build_augmented_entries`.
+
+**Qué es nuestro vs del paper:** el *método* (aditivo, expandir clases chicas) es del
+paper; el *multiplicador exacto* `min(20, 2·N_i)` es decisión nuestra (el paper no da el
+número de imágenes sintéticas por clase) — elegido para acotar el costo de cómputo en la
+T4. Override en `config.py` (`AUG_TARGET_CAP`, `AUG_FACTOR`).
+
+---
+
+## D5 — (reservado)
 
 Anotar acá cualquier desviación futura (resolución, normalización, optimizador,
 descongelar backbone, etc.) con su justificación **antes** de aplicarla.

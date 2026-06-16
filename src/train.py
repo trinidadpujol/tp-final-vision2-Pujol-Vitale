@@ -18,7 +18,7 @@ import torch
 import torch.nn as nn
 
 import config
-from src.dataset import load_split, make_dataloader
+from src.dataset import load_split, make_dataloader, make_train_loader
 from src.losses import build_loss
 from src.models import build_model, count_parameters, trainable_parameters
 from src.transforms import build_transforms
@@ -86,14 +86,20 @@ def train_one_run(rc: RunConfig, device: str | None = None,
     log.info(f"config: {asdict(rc)}")
 
     # ---- Datos ----
-    train_tf = build_transforms(train=rc.use_aug, use_imagenet_norm=rc.use_imagenet_norm)
-    eval_tf = build_transforms(train=False, use_imagenet_norm=rc.use_imagenet_norm)
+    # PAPER: la augmentation CREA imágenes sintéticas y AGRANDA el dataset (mantiene los
+    # originales a brillo real), no reemplaza cada imagen. Originales → transform limpio;
+    # copias sintéticas → augmentation. Ver dataset.make_train_loader / DEVIATIONS D4.
+    clean_tf = build_transforms(train=False, use_imagenet_norm=rc.use_imagenet_norm)
+    aug_tf = build_transforms(train=True, use_imagenet_norm=rc.use_imagenet_norm)
     train_e = _maybe_subset(load_split("train"), rc.max_train)
     val_e = _maybe_subset(load_split("val"), rc.max_val)
-    train_loader = make_dataloader(train_e, train_tf, shuffle=True,
-                                   batch_size=rc.batch_size, num_workers=rc.num_workers)
-    val_loader = make_dataloader(val_e, eval_tf, shuffle=False,
+    train_loader = make_train_loader(train_e, use_aug=rc.use_aug, clean_tf=clean_tf,
+                                     aug_tf=aug_tf, seed=rc.seed,
+                                     batch_size=rc.batch_size, num_workers=rc.num_workers)
+    val_loader = make_dataloader(val_e, clean_tf, shuffle=False,
                                  batch_size=rc.batch_size, num_workers=rc.num_workers)
+    log.info(f"train imgs: {len(train_loader.dataset):,} (use_aug={rc.use_aug}) | "
+             f"val imgs: {len(val_e):,}")
 
     # ---- Modelo / loss / optimizador ----
     model = build_model(rc.model_name, num_classes=config.NUM_CLASSES,
