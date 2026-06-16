@@ -126,7 +126,9 @@ FREEZE_BACKBONE = True    # PAPER: fine-tunea SOLO las FC (backbone congelado).
 # NOSOTROS (no especificados por el paper, ver DEVIATIONS.md):
 BATCH_SIZE = 32           # bajar si hay OOM con 300x300 + VGG16_BN.
 NUM_WORKERS = 4
-REPLICATE_SEEDS = (0, 1, 2, 3, 4)  # 5 réplicas → accuracy media ± std.
+REPLICATE_SEEDS = (0, 1, 2)  # 3 réplicas → media ± std. Bajamos de 5 a 3 por el
+                             # presupuesto de 12 h en T4 (ver DEVIATIONS.md D2). Así
+                             # `02_train_vgg.py` sin --seeds ya entra en un solo commit.
 
 # --------------------------------------------------------------------------- #
 # Weighted Cross-Entropy

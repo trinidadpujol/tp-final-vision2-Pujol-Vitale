@@ -48,12 +48,13 @@ desviación, es una corrección factual de la nota del paper.
 No son desviaciones (el paper no los fija), pero se documentan para reproducibilidad:
 
 - **Batch size:** 32 (bajar si hay OOM con 300×300 + VGG16_BN).
-- **Semillas de réplica:** plan original `(0, 1, 2, 3, 4)` = 5 corridas. **En el run de
-  Kaggle usamos 3 semillas `(0, 1, 2)`** por el presupuesto de tiempo de la T4 (ver D3):
-  VGG16_BN a 300×300 toma ~43 min/corrida medido → 3 var × 5 sem ≈ 10.7 h, no entra junto
-  con ResNet en el límite de 12 h de "Save & Run All". Con 3 var × 3 sem ≈ 6.5 h sí entra.
-  Sigue habiendo media ± std (3 muestras); el nº de réplicas fue decisión nuestra, no de
-  la receta del paper. `config.REPLICATE_SEEDS` queda en 5; el notebook pasa `--seeds 0 1 2`.
+- **Semillas de réplica:** plan original `(0, 1, 2, 3, 4)` = 5 corridas. **Usamos 3
+  semillas `(0, 1, 2)`** por el presupuesto de tiempo de la T4 (ver D3): VGG16_BN a
+  300×300 toma ~43 min/corrida medido → 3 var × 5 sem ≈ 10.7 h, no entra junto con ResNet
+  en el límite de 12 h de "Save & Run All". Con 3 var × 3 sem ≈ 7.5 h sí entra. Sigue
+  habiendo media ± std (3 muestras); el nº de réplicas fue decisión nuestra, no de la
+  receta del paper. **`config.REPLICATE_SEEDS = (0, 1, 2)`** es ahora el default, así
+  `02_train_vgg.py` sin `--seeds` ya entra en un solo commit.
 - **Semilla de split:** 42, fija; los splits se guardan a disco y se reusan.
 - **num_workers** del DataLoader: 4.
 - **Weighted CE `N_max`:** los pesos se calculan desde el split de **train** (sin
