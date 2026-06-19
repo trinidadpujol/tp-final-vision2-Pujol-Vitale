@@ -36,6 +36,7 @@ VARIANTS = {
     "ce":     {"loss_kind": "ce",  "use_aug": False},
     "ce_aug": {"loss_kind": "ce",  "use_aug": True},
     "wce":    {"loss_kind": "wce", "use_aug": False},
+    "wce_aug": {"loss_kind": "wce", "use_aug": True},
 }
 
 # IDs de las clases con 4 imágenes (las críticas del paper). Para reporte focalizado.
