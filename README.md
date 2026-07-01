@@ -1,160 +1,382 @@
-# Cattle Re-ID — Identificación individual de ganado por hocico
+# Individual Cattle Identification by Muzzle Image
 
-Replicación de **Li, Erickson & Xiong (2022)**, *Individual Beef Cattle Identification
-Using Muzzle Images and Deep Learning Techniques* (Animals 12(11):1453), sobre el
-dataset Zenodo Muzzle DB (268 vacas, 4923 imágenes de hocico).
+Final project for **Advanced Computer Vision** (Universidad de San Andrés).
 
-TP final de **Visión Artificial Avanzada** (Universidad de San Andrés).
+The project has two stages. The first replicates the paper by Li, Erickson & Xiong (2022)
+on closed-set cattle identification from muzzle images. The second builds on that foundation
+a re-identification system and analyzes whether knowledge learned from muzzles transfers to
+another domain (bovine faces) and to another muzzle dataset.
 
-- `plan.md` — spec detallada (la receta del paper, fase por fase). **Fuente de verdad.**
-- `CLAUDE.md` — contexto del proyecto y principios de trabajo.
-- `DEVIATIONS.md` — toda diferencia respecto del paper, documentada.
-- `config.py` — única fuente de hiperparámetros, rutas y semillas.
+---
 
-## Tarea
+## Stages and status
 
-Clasificación de conjunto cerrado: 268 vacas = 268 clases. Dada una imagen de hocico,
-predecir el individuo. Meta: accuracy en test **~96–98%+** (el paper reporta 98.7% con
-VGG16_BN) y reproducir que Weighted CE + data augmentation ayudan a las clases con
-pocas imágenes.
+### Stage 1 — Replication (complete ✅)
 
-## Setup
+Replication of **Li, Erickson & Xiong (2022)**, *Individual Beef Cattle Identification Using
+Muzzle Images and Deep Learning Techniques*, Animals 12(11):1453.
+
+- **Task:** closed-set classification. 268 cattle = 268 classes. Given a muzzle image, predict the individual.
+- **Dataset:** Zenodo Muzzle DB — 268 cattle, 4923 muzzle images.
+- **Main model (replicates the paper):** VGG16_BN — test accuracy: `<fill in>` (target: ~96–98%+; paper reports 98.7%).
+- **Own backbone:** ResNet-50, trained in parallel as the starting point for Stage 2.
+- Deviations from the paper are documented in [`DEVIATIONS.md`](DEVIATIONS.md).
+
+### Stage 2 — Re-identification and domain adaptation analysis (complete ✅)
+
+- **Task:** open-set re-identification. ResNet-50 encoder trained on CMPD300 (muzzles);
+  gallery/probe with disjoint identities, Rank-1 and mAP metrics.
+- **Source dataset:** CMPD300 — bovine muzzle dataset with pre-existing splits.
+- **Target domain:** bovine face dataset (Ahmed) and Zenodo muzzle dataset (cross-dataset).
+- **Main finding:** a plain ImageNet ResNet-50 matches the muzzle-specialized encoder across all
+  three experiments (random split, session split, single-shot). Conclusion: in these datasets
+  there is no domain adaptation gap attributable to the muzzle modality that is worth closing
+  with adaptation techniques. This is documented with Grad-CAM visualizations over cosine
+  similarity of embeddings.
+
+---
+
+## Repository structure
+
+```
+tp-final-vision2-Pujol-Vitale/
+├── config.py                     # SINGLE source of truth for paths, hyperparameters, seeds
+├── requirements.txt              # pinned dependencies
+├── DEVIATIONS.md                 # all deviations from the paper's recipe, documented
+│
+├── src/                          # reusable logic (not scripts, not notebooks)
+│   ├── dataset.py                # MuzzleDataset + make_dataloader
+│   ├── transforms.py             # preprocessing and augmentation pipelines
+│   ├── models.py                 # build_model() — VGG16_BN and ResNet-50
+│   ├── losses.py                 # CE and Weighted Cross-Entropy
+│   ├── train.py                  # training loop (RunConfig + run_epoch)
+│   ├── evaluate.py               # test evaluation: global + per-class accuracy
+│   ├── utils.py                  # seeds, logging, I/O, get_device
+│   └── reid/
+│       ├── embeddings.py         # EmbeddingExtractor: backbone → 2048-d L2-norm vector
+│       ├── eval_reid.py          # gallery/probe metrics: Rank-1, Rank-5, mAP
+│       └── reid_dataset.py       # entries + split_gallery_probe (random or by session)
+│
+├── scripts/                      # per-phase execution, numbered in order
+│   ├── 00_inspect_data.py        # Stage 1: validate Zenodo dataset (sanity checks)
+│   ├── 00_inspect_cmpd300.py     # Stage 2: validate CMPD300 + generate split JSONs
+│   ├── 01_make_splits.py         # Stage 1: stratified 65/15/20 split (Zenodo)
+│   ├── 02_train_vgg.py           # Stage 1: VGG16_BN replication (4 variants × N seeds)
+│   ├── 03_train_resnet.py        # Stage 1: ResNet-50 backbone (freeze + finetune)
+│   ├── 04_precompute_aug.py      # Stage 1: additive augmentation precomputed to disk
+│   ├── 05_train_source.py        # Stage 2: ResNet-50 encoder on CMPD300
+│   ├── 06_eval_reid.py           # Stage 2: re-ID harness + ImageNet baseline
+│   ├── download_zenodo.py        # utility: download Zenodo dataset
+│   └── kaggle_upload.py          # utility: upload datasets to Kaggle via kagglehub
+│
+├── notebooks/                    # orchestrators for Colab/Kaggle with GPU
+│   ├── kaggle_runner.ipynb       # Stage 1 full run on Kaggle (phases 0→4)
+│   ├── colab_runner.ipynb        # Stage 1 full run on Colab Pro (phases 0→4)
+│   ├── colab_fase5_source.ipynb  # Stage 2: train encoder on CMPD300
+│   ├── colab_fase6_reid.ipynb    # Stage 2: re-ID harness + muzzle→face gap (Ahmed)
+│   ├── colab_gap_muzzle.ipynb    # Stage 2: cross-dataset muzzle→muzzle gap (Zenodo)
+│   ├── colab_gradcam_reid.ipynb  # Grad-CAM over cosine similarity of embeddings
+│   └── gradcam_runner.ipynb      # visual test: VGG16_BN Grad-CAM on Ahmed faces
+│
+└── outputs/                      # all generated files (large files gitignored, splits versioned)
+    ├── splits/                   # Zenodo splits: train/val/test.json + label_map.json
+    ├── splits_cmpd300/           # CMPD300 splits: same format
+    ├── checkpoints/              # saved weights (.pt): resnet50_backbone.pt, cmpd300_source.pt
+    ├── results/                  # per-run metric CSVs and JSONs
+    ├── logs/                     # training logs per run
+    └── aug_cache/                # precomputed synthetic images (additive augmentation)
+```
+
+---
+
+## Requirements and installation
 
 ```bash
-python -m venv .venv && source .venv/bin/activate   # opcional
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-**Dataset.** No se commitea (ver `.gitignore`). Resolución de `DATA_DIR` (en `config.py`):
+Main dependencies (pinned in `requirements.txt`):
 
-1. Variable de entorno `CATTLE_DATA_DIR` (override).
-2. Kaggle: `/kaggle/input/<slug>/BeefCattle_Muzzle_Individualized`.
-3. Local: `data_local/BeefCattle_Muzzle_Individualized` (extraer el zip ahí para
-   smoke-test). Busca también en repos padre, así funciona dentro de un git worktree.
-
-```bash
-# extracción local para smoke-test (desde la carpeta que tiene el zip)
-unzip -q BeefCattle_Muzzle_database.zip -d data_local
-python config.py        # imprime DATA_DIR resuelto y la config completa
-```
-
-## Pipeline (correr en orden)
-
-| Fase | Comando | Qué hace |
-|---|---|---|
-| 0 | `python scripts/00_inspect_data.py` | Inspecciona y valida el dataset (✅ implementado) |
-| 1 | `python scripts/01_make_splits.py` | Split 65/15/20 por imagen, estratificado (✅ implementado) |
-| 2b | `python scripts/04_precompute_aug.py` | Precomputa el set sintético de augmentation a disco (lo usa `ce_aug`) (✅ implementado) |
-| 3 | `python scripts/02_train_vgg.py` | Replicación VGG16_BN: 3 variantes × 5 semillas (✅ implementado) |
-| 4 | `python scripts/03_train_resnet.py` | Backbone propio ResNet-50: freeze + full fine-tune (✅ implementado) |
-
-> **Siempre correr Fase 0 primero.** No avanzar si los sanity checks no pasan.
-
-### Fase 0 — inspección (implementada)
-
-```bash
-python scripts/00_inspect_data.py                # reporte + sanity checks
-python scripts/00_inspect_data.py --check-corrupt # además verifica imágenes ilegibles
-```
-
-Verificado: **268 clases, 4923 imágenes, 4–70 por clase (media 18.4)** → coincide con
-el paper. Reporte en `outputs/results/00_inspect_report.json`.
-
-### Fase 1 — splits + dataset + transforms (implementada)
-
-```bash
-python scripts/01_make_splits.py    # genera outputs/splits/{train,val,test}.json + label_map.json
-```
-
-- **Split por imagen 65/15/20**, estratificado por clase con `SPLIT_SEED` fijo, con
-  garantía de que las 268 clases estén en los 3 splits (necesario para las clases
-  con 4 imágenes). Resultado real: 64.7 / 15.2 / 20.0%.
-- Rutas guardadas **relativas a `DATA_DIR`** → el mismo split sirve en Kaggle y local.
-- `src/transforms.py`: pipeline base (resize 300×300 + ToTensor = [0,1], **sin**
-  ImageNet) y de train con la augmentation del paper (flip, brillo 0.2–0.5,
-  rotación ±15°, blur gaussiano kernel ∈ {1,3,5}). Flag `USE_IMAGENET_NORM` (default OFF).
-- `src/dataset.py`: `MuzzleDataset` + `make_dataloader` leyendo desde los JSON.
-
-### Fase 2 — modelos + losses (implementada)
-
-- `src/models.py`: `build_model('vgg16_bn'|'resnet50', num_classes=268, freeze_backbone=True)`.
-  Reemplaza la cabeza por `Linear(..., 268)` y, con `freeze_backbone=True` (PAPER),
-  congela el backbone conv y entrena solo las FC.
-- `src/losses.py`: `build_loss('ce'|'wce')`. Weighted CE con `w_i = N_max/N_i`
-  calculado desde el split de train (ver `DEVIATIONS.md` sobre `N_max`).
-
-**Pesos preentrenados (Kaggle, sin internet).** Para no depender de internet en el
-notebook, bajá una vez los `.pth` de ImageNet y subilos como Kaggle Dataset:
-
-| Modelo | Archivo (no renombrar) |
+| Library | Version |
 |---|---|
-| VGG16_BN | `vgg16_bn-6c64b313.pth` |
-| ResNet-50 | `resnet50-0676ba61.pth` |
+| torch | 2.2.2 |
+| torchvision | 0.17.2 |
+| scikit-learn | 1.4.2 |
+| numpy | 1.26.4 |
+| pandas | 2.2.2 |
+| Pillow | 10.3.0 |
+| tqdm | 4.66.4 |
+
+> **Kaggle/Colab:** base images already include torch and torchvision. Do not reinstall torch;
+> only install missing pure-Python libraries.
+
+---
+
+## Datasets and path configuration
+
+Datasets are **not included in the repository**. They are hosted on Kaggle (Stage 1) or Google
+Drive (Stage 2).
+
+### Stage 1 dataset — Zenodo Muzzle DB
+
+268 cattle, 4923 muzzle images. Zenodo record 6324361.
+
+`config.py` resolves the path automatically in this order:
+
+1. Environment variable `CATTLE_DATA_DIR` (manual override).
+2. Kaggle: `/kaggle/input/<slug>/BeefCattle_Muzzle_Individualized`.
+3. Local: `data_local/BeefCattle_Muzzle_Individualized` (for smoke-tests).
+
+```bash
+# local extraction for smoke-test
+unzip -q BeefCattle_Muzzle_database.zip -d data_local
+python config.py       # prints resolved DATA_DIR and full configuration
+```
+
+To upload to Kaggle (automated via kagglehub):
+
+```bash
+pip install kagglehub
+export KAGGLE_USERNAME=your_username KAGGLE_KEY=xxxxxxxx   # kaggle.com → Settings → API
+python scripts/kaggle_upload.py --user your_username        # uploads images + ImageNet weights
+```
+
+**Pretrained ImageNet weights (offline on Kaggle):** download once and upload as a Kaggle Dataset:
 
 ```bash
 curl -L -O https://download.pytorch.org/models/vgg16_bn-6c64b313.pth
 curl -L -O https://download.pytorch.org/models/resnet50-0676ba61.pth
 ```
 
-`config.py` autodetecta esos `.pth` **por nombre de archivo**: en Kaggle bajo
-`/kaggle/input/*/`, y en local en cualquier subcarpeta que los contenga (p.ej.
-`imagenet-pretrained/` o `pretrained_weights/`). Override con `CATTLE_PRETRAINED_DIR`.
-Si no los encuentra, `models.py` los baja por internet.
+`config.py` detects them by filename. Override with `CATTLE_PRETRAINED_DIR`.
 
-**Subir los datasets a Kaggle (automatizado).** En vez de la UI, `scripts/kaggle_upload.py`
-sube ambos datasets con `kagglehub` (rutas derivadas de `config.py`). Correr desde el
-checkout local que tiene la data:
+### Stage 2 dataset — CMPD300 (source)
+
+Bovine muzzle dataset with pre-existing splits (`train/`, `val/`, `test/`). Not re-split;
+`scripts/00_inspect_cmpd300.py` generates the split JSONs in the format read by `src/dataset.py`.
+
+Path resolved from `CMPD300_DATA_DIR` (env) → `/kaggle/input/.../Baseline` → `datasets/Baseline/`.
+
+### Stage 2 dataset — Ahmed (target, bovine faces)
+
+Bovine face dataset (~13.9 GB). A subset is extracted directly in the Colab notebooks.
+Not configured in `config.py`; notebooks handle it from Google Drive.
+Reference: `<fill in>`.
+
+---
+
+## Running each phase
+
+> Always run in order. Do not proceed if the Phase 0 sanity checks fail.
+
+### Stage 1 — Paper replication
+
+**Phase 0 — Dataset inspection**
 
 ```bash
-pip install kagglehub
-export KAGGLE_USERNAME=tu_usuario KAGGLE_KEY=xxxxxxxx   # kaggle.com → Settings → API
-python scripts/kaggle_upload.py --user tu_usuario        # sube imágenes + pesos
-python scripts/kaggle_upload.py --user tu_usuario --only weights --version-notes "v2"
+python scripts/00_inspect_data.py                  # report + sanity checks (268 classes, 4923 imgs)
+python scripts/00_inspect_data.py --check-corrupt  # also verifies unreadable images (slow)
 ```
 
-Sube `data_local/` (preserva la carpeta `BeefCattle_Muzzle_Individualized/`) y la
-carpeta de pesos. **No commitear credenciales** (`KAGGLE_KEY` va por entorno).
+Verifies: 268 classes, 4923 images, 4–70 per class (mean 18.4). Saves report to
+`outputs/results/00_inspect_report.json`.
 
-### Fase 4 — backbone propio ResNet-50 (implementada)
+**Phase 1 — Splits**
 
 ```bash
-python scripts/03_train_resnet.py            # freeze + full fine-tune, seed 0, 50 épocas
-python scripts/03_train_resnet.py --smoke    # pipeline rápido en CPU (subset, 2 épocas, sin ImageNet)
+python scripts/01_make_splits.py
 ```
 
-- **Misma receta del paper** (300×300, [0,1] crudo, SGD mom=0.9, lr=0.001,
-  StepLR(7, 0.1), 50 épocas), reusando `src/train.py` y `src/evaluate.py` —no se
-  reimplementa el loop. ResNet-50 **NO** replica el 98.7% (ese es VGG16_BN); es el
-  backbone que se reutilizará en domain adaptation.
-- Corre **dos modos**: `freeze` (`freeze_backbone=True`, solo FC, como el paper) y
-  `finetune` (`freeze_backbone=False`, fine-tune completo). Flags útiles:
-  `--modes freeze`, `--seeds 0 1 2` (→ media ± std), `--loss wce`, `--aug`.
-- El **mejor run por val accuracy** (selección sin fuga de test) se copia a
-  `outputs/checkpoints/resnet50_backbone.pt` → ese es el checkpoint que toma la fase
-  futura de domain adaptation.
-- Reporta test global + balanced (media ± std por modo) en
-  `outputs/results/03_resnet_summary.json`, CSV por clase por run, y la accuracy de las
-  8 clases con 4 imágenes (ver `DEVIATIONS.md`) sin esconderla detrás del promedio.
+Generates a class-stratified 65/15/20 split with a fixed seed (`config.SPLIT_SEED = 42`).
+Actual result: 64.7% / 15.2% / 20.0%. Saves splits to `outputs/splits/` and reuses them
+across all runs (no re-splitting).
 
-## Estructura
+**Phase 2b — Augmentation precomputation (optional, recommended)**
 
-```
-config.py                 # hiperparámetros, rutas, semillas (single source of truth)
-src/
-  utils.py                # seeds, logging, I/O
-  dataset.py              # (Fase 1) Dataset + DataLoader
-  transforms.py           # (Fase 1) preprocesamiento + data augmentation
-  models.py               # VGG16_BN, ResNet-50 (freeze backbone / full finetune)
-  losses.py               # CE, Weighted CE
-  train.py / evaluate.py  # (Fase 3) entrenamiento y evaluación
-scripts/                  # 00..03, orquestación por fase
-outputs/                  # splits/ checkpoints/ results/ logs/  (pesados gitignored)
-notebooks/                # runner para Kaggle
+```bash
+python scripts/04_precompute_aug.py           # generates if not present
+python scripts/04_precompute_aug.py --force   # regenerates
 ```
 
-## Reproducibilidad e integridad
+Generates synthetic augmentation images **once** and saves them to `outputs/aug_cache/`.
+Training picks them up automatically if the cache exists; otherwise falls back to equivalent
+online augmentation.
 
-- Splits guardados a disco y reusados; seeds fijas en `src/utils.py`.
-- Nada de métricas fabricadas: se reportan los números reales, incluida la accuracy
-  por clase (sobre todo las clases con 4 imágenes).
-- Toda desviación de la receta del paper va a `DEVIATIONS.md`.
+**Phase 3 — VGG16_BN replication**
+
+```bash
+python scripts/02_train_vgg.py                     # 4 variants × 3 seeds (config), 50 epochs
+python scripts/02_train_vgg.py --seeds 0           # single seed (fast)
+python scripts/02_train_vgg.py --epochs 50 --seeds 0 1 2
+python scripts/02_train_vgg.py --smoke             # fast pipeline: 1 seed, 2 epochs, subset
+```
+
+Variants trained:
+
+| Variant | Loss | Augmentation |
+|---|---|---|
+| `ce` | Cross-Entropy | No |
+| `ce_aug` | Cross-Entropy | Yes (additive) |
+| `wce` | Weighted CE | No |
+| `wce_aug` | Weighted CE | Yes (additive) |
+
+> **Note:** `plan.md` originally defined 3 variants (ce / ce_aug / wce); the implementation
+> in `02_train_vgg.py` has 4 (wce_aug was added).
+
+Generates a summary table at `outputs/results/02_vgg_summary.json` and a per-class CSV for
+the best run.
+
+**Phase 4 — ResNet-50 backbone**
+
+```bash
+python scripts/03_train_resnet.py                  # freeze + finetune, seed 0, 50 epochs
+python scripts/03_train_resnet.py --modes freeze   # paper mode only (frozen backbone)
+python scripts/03_train_resnet.py --aug --loss wce # stronger backbone
+python scripts/03_train_resnet.py --smoke          # fast pipeline on CPU
+```
+
+Runs two modes: `freeze` (FC only, as in the paper) and `finetune` (full fine-tuning). The
+best run by val accuracy is copied to `outputs/checkpoints/resnet50_backbone.pt`.
+
+### Stage 2 — Re-identification
+
+**Phase 5 — CMPD300 inspection + encoder training**
+
+```bash
+# 1. Inspection and split generation
+python scripts/00_inspect_cmpd300.py                   # report + writes JSONs to outputs/splits_cmpd300/
+python scripts/00_inspect_cmpd300.py --check-corrupt   # also verifies unreadable images
+
+# 2. Encoder training
+python scripts/05_train_source.py                      # freeze (FC only), 50 epochs, seed 0
+python scripts/05_train_source.py --no-freeze          # full fine-tuning
+python scripts/05_train_source.py --aug                # + online augmentation in train
+python scripts/05_train_source.py --smoke              # fast pipeline on CPU
+```
+
+Trains ResNet-50 on CMPD300 (224 px, ImageNet normalization). Best checkpoint saved to
+`outputs/checkpoints/cmpd300_source.pt`.
+
+**Phase 6 — Re-identification harness**
+
+```bash
+# Intra-CMPD300 sanity check (validates the harness; result NOT reportable due to leakage)
+python scripts/06_eval_reid.py --source-dir /path/to/CMPD300/train
+
+# Muzzle→face gap (reportable): CMPD300 encoder on Ahmed faces
+python scripts/06_eval_reid.py \
+    --target-dir /path/to/Ahmed \
+    --single-shot \
+    --compare-imagenet
+
+# Muzzle→muzzle cross-dataset gap: CMPD300 encoder on Zenodo
+python scripts/06_eval_reid.py \
+    --target-dir /path/to/Zenodo/BeefCattle_Muzzle_Individualized \
+    --by-session \
+    --single-shot \
+    --compare-imagenet
+```
+
+Key flags:
+
+| Flag | Description |
+|---|---|
+| `--compare-imagenet` | Also runs a plain ImageNet ResNet-50 as a control baseline |
+| `--single-shot` | 1 image/session per individual in gallery (harder; reduces burst-photo leakage) |
+| `--by-session` | Split by capture session (avoids splitting a burst between gallery and probe) |
+| `--ckpt` | Path to encoder checkpoint (default: `outputs/checkpoints/cmpd300_source.pt`) |
+
+### Colab / Kaggle notebooks
+
+The notebooks in `notebooks/` orchestrate the scripts above in GPU environments:
+
+| Notebook | Platform | What it does |
+|---|---|---|
+| `kaggle_runner.ipynb` | Kaggle | Stage 1 full run (phases 0→4) |
+| `colab_runner.ipynb` | Colab Pro | Stage 1 full run (phases 0→4) |
+| `colab_fase5_source.ipynb` | Colab | Train CMPD300 encoder (Phase 5) |
+| `colab_fase6_reid.ipynb` | Colab | Re-ID harness + muzzle→face gap (Ahmed) |
+| `colab_gap_muzzle.ipynb` | Colab | Cross-dataset muzzle→muzzle gap (Zenodo) |
+| `colab_gradcam_reid.ipynb` | Colab | Grad-CAM over cosine similarity of embeddings |
+| `gradcam_runner.ipynb` | Colab | Visual test: VGG16_BN Grad-CAM on Ahmed faces |
+
+All logic lives in `src/` and `scripts/`; notebooks only orchestrate.
+
+---
+
+## Results and findings
+
+### Stage 1
+
+| Model | Variant | Seeds | Test accuracy (mean ± std) |
+|---|---|---|---|
+| VGG16_BN | ce | 3 | `<fill in>` |
+| VGG16_BN | ce_aug | 3 | `<fill in>` |
+| VGG16_BN | wce | 3 | `<fill in>` |
+| VGG16_BN | wce_aug | 3 | `<fill in>` |
+| ResNet-50 | freeze | 1 | `<fill in>` |
+| ResNet-50 | finetune | 1 | `<fill in>` |
+
+The paper reports 98.7% for VGG16_BN. The replication aims to reproduce the trend (wce and
+augmentation help the 8 classes with only 4 images), not to match the exact decimal.
+
+Key deviations from the paper (see [`DEVIATIONS.md`](DEVIATIONS.md) for details):
+- **3 seeds** instead of 5 (T4 GPU budget, ~43 min/run).
+- **T4 GPU** instead of P100 (Kaggle's current PyTorch build does not support sm_60).
+- **Additive augmentation** (precomputed to disk): the paper describes augmentation as a step
+  that *creates synthetic images and enlarges the dataset*, not as per-epoch online augmentation.
+- Weighted CE `N_max` computed from the training split (≈46), not the paper's literal 70.
+
+### Stage 2
+
+| Experiment | Encoder | Rank-1 | mAP |
+|---|---|---|---|
+| Muzzle→face gap (Ahmed), random split | CMPD300 | `<fill in>` | `<fill in>` |
+| Muzzle→face gap (Ahmed), random split | Plain ImageNet | `<fill in>` | `<fill in>` |
+| Muzzle→face gap (Ahmed), session split, single-shot | CMPD300 | `<fill in>` | `<fill in>` |
+| Muzzle→face gap (Ahmed), session split, single-shot | Plain ImageNet | `<fill in>` | `<fill in>` |
+| Muzzle→muzzle gap (Zenodo), single-shot | CMPD300 | `<fill in>` | `<fill in>` |
+| Muzzle→muzzle gap (Zenodo), single-shot | Plain ImageNet | `<fill in>` | `<fill in>` |
+
+**Main finding:** across all three experiments, a plain ImageNet ResNet-50 (with no muzzle
+training whatsoever) matches or outperforms the CMPD300-specialized encoder. This indicates
+that the observed performance does not measure muzzle biometric recognition, but generic visual
+similarity that the ImageNet backbone already captures. There is no domain adaptation gap
+attributable to the muzzle modality that can be closed with adaptation techniques, at least
+with these datasets and this protocol.
+
+Grad-CAM visualizations (`colab_gradcam_reid.ipynb`) show which image regions each encoder
+attends to when computing cosine similarity, helping explain why ImageNet matches the specialist.
+
+---
+
+## References
+
+**Replicated paper:**
+> Li, G.; Erickson, G.E.; Xiong, Y. (2022). *Individual Beef Cattle Identification Using
+> Muzzle Images and Deep Learning Techniques.* Animals 12(11):1453.
+> DOI: [10.3390/ani12111453](https://doi.org/10.3390/ani12111453)
+
+**Stage 1 dataset:**
+> Zenodo Muzzle DB — record 6324361. 268 bovines, 4923 muzzle images.
+> [https://zenodo.org/record/6324361](https://zenodo.org/record/6324361)
+
+**Stage 2 source dataset:**
+> CMPD300 — bovine muzzle dataset with pre-existing splits.
+> Full reference: `<fill in>`
+
+**Stage 2 target dataset:**
+> Bovine face dataset (Ahmed). `<fill in>`
+
+---
+
+## Reproducibility and integrity
+
+- Splits saved to disk in `outputs/splits/` and reused; never re-split between runs.
+- Fixed seed for splitting (`SPLIT_SEED = 42`) and explicit seeds for each replicate.
+- All deviations from the paper's recipe are documented in [`DEVIATIONS.md`](DEVIATIONS.md) with justification.
+- Full configuration is logged at the start of every run (see `outputs/logs/`).
+- No fabricated metrics: real numbers go to `outputs/results/`, including per-class accuracy
+  for the 8 cattle with only 4 images.

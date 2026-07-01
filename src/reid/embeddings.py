@@ -1,13 +1,13 @@
-"""embeddings.py — Extractor de embeddings (Fase 6).
+"""embeddings.py — Embedding extractor (Phase 6).
 
-Expone el vector del global average pool (**2048-d en ResNet-50**), **L2-normalizado**
-(coseno = producto punto). Dos constructores:
+Exposes the global average pool vector (**2048-d in ResNet-50**), **L2-normalized**
+(cosine similarity = dot product). Two constructors:
 
-- `from_checkpoint(ckpt)`: tu encoder entrenado (p.ej. cmpd300_source.pt), con el
-  preprocesamiento con el que se entrenó (guardado en el run_config).
-- `from_imagenet()`: ResNet-50 de ImageNet PURO (sin nada de hocico), como línea de base
-  tonta para chequear cuánto del rendimiento es "gratis" (fotos parecidas) y cuánto aporta
-  el encoder de hocico.
+- `from_checkpoint(ckpt)`: your trained encoder (e.g. cmpd300_source.pt), with the
+  preprocessing it was trained with (stored in the run_config).
+- `from_imagenet()`: plain ImageNet ResNet-50 (no muzzle training whatsoever), as a
+  dumb baseline to check how much performance is "free" (similar-looking photos) and
+  how much the muzzle encoder actually contributes.
 """
 from __future__ import annotations
 
@@ -26,12 +26,12 @@ from src.utils import get_device, get_logger
 
 
 def _resnet50_backbone(model: nn.Module) -> nn.Module:
-    """ResNet-50 sin la fc final → salida [B, 2048, 1, 1]."""
+    """ResNet-50 without the final fc layer → output [B, 2048, 1, 1]."""
     return nn.Sequential(*list(model.children())[:-1])
 
 
 class EmbeddingExtractor:
-    """Envuelve un backbone y produce embeddings L2-norm de un conjunto de entries."""
+    """Wraps a backbone and produces L2-norm embeddings for a set of entries."""
 
     def __init__(self, backbone: nn.Module, image_size: int, use_imagenet_norm: bool,
                  device: str, name: str = "encoder"):
@@ -46,20 +46,20 @@ class EmbeddingExtractor:
         self.log.info(f"encoder='{name}' | image_size={image_size} | "
                       f"imagenet_norm={use_imagenet_norm} | device={device}")
 
-    # ---- constructores ----
+    # ---- constructors ----
     @classmethod
     def from_checkpoint(cls, ckpt_path: Path = config.CHECKPOINTS_DIR / "cmpd300_source.pt",
                         device: str | None = None) -> "EmbeddingExtractor":
         device = device or get_device()
         ckpt_path = Path(ckpt_path)
         if not ckpt_path.is_file():
-            raise FileNotFoundError(f"No existe el checkpoint {ckpt_path}. ¿Corriste la Fase 5?")
+            raise FileNotFoundError(f"Checkpoint {ckpt_path} does not exist. Did you run Phase 5?")
         obj = torch.load(ckpt_path, map_location="cpu")
         state = obj["model_state"] if isinstance(obj, dict) and "model_state" in obj else obj
         model_name = obj.get("model_name", "resnet50") if isinstance(obj, dict) else "resnet50"
         num_classes = obj.get("num_classes", config.NUM_CLASSES) if isinstance(obj, dict) else config.NUM_CLASSES
         if model_name != "resnet50":
-            raise ValueError(f"Extractor no soportado para {model_name} (usar resnet50).")
+            raise ValueError(f"Extractor not supported for {model_name} (use resnet50).")
         model = build_model("resnet50", num_classes=num_classes,
                             freeze_backbone=False, pretrained=False)
         model.load_state_dict(state)
@@ -72,7 +72,7 @@ class EmbeddingExtractor:
     @classmethod
     def from_imagenet(cls, device: str | None = None) -> "EmbeddingExtractor":
         device = device or get_device()
-        # ResNet-50 de ImageNet puro (backbone preentrenado, cabeza descartada).
+        # Plain ImageNet ResNet-50 (pretrained backbone, head discarded).
         model = build_model("resnet50", num_classes=2, freeze_backbone=False, pretrained=True)
         return cls(_resnet50_backbone(model), 224, True, device, name="imagenet_resnet50")
 

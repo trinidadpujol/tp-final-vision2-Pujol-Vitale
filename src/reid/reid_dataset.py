@@ -1,14 +1,14 @@
-"""reid_dataset.py — entries + split gallery/probe por identidad (Fase 6).
+"""reid_dataset.py — entries + gallery/probe split by identity (Phase 6).
 
 Splits:
-- `split_gallery_probe`: al azar dentro de cada individuo.
-- `split_gallery_probe_by_session`: agrupa por SESIÓN (timestamp del nombre) y no parte una
-  sesión entre gallery y probe (evita matchear fotos gemelas de la misma ráfaga).
+- `split_gallery_probe`: random split within each individual.
+- `split_gallery_probe_by_session`: groups by SESSION (filename timestamp) and does not
+  split a session between gallery and probe (avoids matching twin photos from the same burst).
 
-`gallery_shots`: si se pasa (p.ej. 1 = single-shot), la gallery lleva exactamente ese número
-de imágenes (o sesiones) por individuo y el resto va a probe. Single-shot reduce la fuga por
-fotos parecidas: al haber una sola referencia por individuo, es más difícil acertar por
-similitud de foto en vez de por biometría.
+`gallery_shots`: if passed (e.g. 1 = single-shot), the gallery gets exactly that number
+of images (or sessions) per individual and the rest goes to probe. Single-shot reduces
+burst-photo leakage: with only one reference per individual it is harder to match by photo
+similarity instead of biometrics.
 """
 from __future__ import annotations
 
@@ -17,16 +17,16 @@ import re
 from pathlib import Path
 
 IMG_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
-_BURST_SUFFIX = re.compile(r"-\d+$")   # "-00", "-01", ... al final del stem
+_BURST_SUFFIX = re.compile(r"-\d+$")   # "-00", "-01", ... at the end of the stem
 
 
 def session_id(rel_path: str) -> str:
-    """ID de sesión = stem del archivo sin el sufijo `-NN` de la ráfaga."""
+    """Session ID = file stem without the burst suffix `-NN`."""
     return _BURST_SUFFIX.sub("", Path(rel_path).stem)
 
 
 def entries_from_folders(root: Path, max_per_id: int | None = None) -> tuple[list[dict], dict]:
-    """<root>/<id>/*.img → (entries [{path,label}], id_map {carpeta: entero})."""
+    """<root>/<id>/*.img → (entries [{path,label}], id_map {folder: int})."""
     root = Path(root)
     id_names = sorted(p.name for p in root.iterdir() if p.is_dir())
     id_map = {name: i for i, name in enumerate(id_names)}
@@ -44,7 +44,7 @@ def entries_from_folders(root: Path, max_per_id: int | None = None) -> tuple[lis
 def split_gallery_probe(entries: list[dict], seed: int = 0, min_images: int = 2,
                         gallery_frac: float = 0.5,
                         gallery_shots: int | None = None) -> tuple[list[dict], list[dict], dict]:
-    """Split al azar por individuo. `gallery_shots` fija cuántas imágenes van a gallery/id."""
+    """Random split per individual. `gallery_shots` fixes how many images go to gallery/id."""
     by_label: dict[int, list[dict]] = {}
     for e in entries:
         by_label.setdefault(e["label"], []).append(e)
@@ -56,7 +56,7 @@ def split_gallery_probe(entries: list[dict], seed: int = 0, min_images: int = 2,
             continue
         items = items[:]; rng.shuffle(items)
         if gallery_shots is not None:
-            n_gal = min(gallery_shots, len(items) - 1)   # al menos 1 a probe
+            n_gal = min(gallery_shots, len(items) - 1)   # at least 1 goes to probe
         else:
             n_gal = min(max(1, round(len(items) * gallery_frac)), len(items) - 1)
         gallery += items[:n_gal]; probe += items[n_gal:]; used += 1
@@ -70,7 +70,7 @@ def split_gallery_probe_by_session(entries: list[dict], seed: int = 0, min_sessi
                                    gallery_frac: float = 0.5,
                                    gallery_shots: int | None = None
                                    ) -> tuple[list[dict], list[dict], dict]:
-    """Split por sesión. `gallery_shots` = cuántas SESIONES van a gallery por individuo."""
+    """Session-based split. `gallery_shots` = how many SESSIONS go to gallery per individual."""
     by_label: dict[int, dict[str, list[dict]]] = {}
     for e in entries:
         by_label.setdefault(e["label"], {}).setdefault(session_id(e["path"]), []).append(e)

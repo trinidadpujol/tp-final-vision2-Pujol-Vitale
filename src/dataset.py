@@ -1,17 +1,17 @@
-"""dataset.py — Dataset de PyTorch + DataLoader leyendo desde los splits JSON.
+"""dataset.py — PyTorch Dataset + DataLoader reading from split JSON files.
 
-Los splits se generan una sola vez con `scripts/01_make_splits.py` y se guardan en
-`outputs/splits/`. Acá solo se leen (no se re-splitea por corrida → reproducibilidad).
+Splits are generated once by `scripts/01_make_splits.py` and saved in
+`outputs/splits/`. This module only reads them (no re-splitting per run → reproducibility).
 
-Las rutas en los JSON son RELATIVAS a `config.DATA_DIR`, así el mismo split funciona
-en Kaggle y en local sin reescribir paths.
+Paths in the JSONs are RELATIVE to `config.DATA_DIR`, so the same split works
+on Kaggle and locally without rewriting paths.
 
-Etapa 2: `make_dataloader` y `make_train_loader` aceptan `data_dir` (default
-`config.DATA_DIR`) para poder apuntar a otro dataset —p.ej. `config.CMPD300_DIR`—
-reusando el mismo Dataset y los mismos splits JSON.
+Stage 2: `make_dataloader` and `make_train_loader` accept a `data_dir` argument
+(default `config.DATA_DIR`) to point at a different dataset — e.g. `config.CMPD300_DIR` —
+reusing the same Dataset class and split JSON format.
 
-Diseño preparado para la fase futura de embeddings: `MuzzleDataset` devuelve
-(imagen, label) y opcionalmente el path, suficiente para gallery/probe más adelante.
+Designed for the future embedding phase: `MuzzleDataset` returns (image, label) and
+optionally the path, sufficient for gallery/probe downstream.
 """
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ from src.utils import load_json
 
 
 class MuzzleDataset(Dataset):
-    """Dataset de imágenes de hocico. Lee entradas {"path", "label"} de un split."""
+    """Muzzle image dataset. Reads {"path", "label"} entries from a split file."""
 
     def __init__(self, entries: list[dict], transform=None,
                  data_dir: Path = config.DATA_DIR, return_path: bool = False):
@@ -53,20 +53,20 @@ class MuzzleDataset(Dataset):
 
 
 def load_split(split_name: str, splits_dir: Path = config.SPLITS_DIR) -> list[dict]:
-    """Carga un split ('train' | 'val' | 'test') desde su JSON."""
+    """Load a split ('train' | 'val' | 'test') from its JSON file."""
     path = Path(splits_dir) / f"{split_name}.json"
     if not path.is_file():
         raise FileNotFoundError(
-            f"No existe {path}. Generá los splits primero: "
+            f"{path} does not exist. Generate splits first: "
             f"python scripts/01_make_splits.py"
         )
     return load_json(path)
 
 
 def _make_loader(ds, *, shuffle: bool, batch_size: int, num_workers: int) -> DataLoader:
-    """DataLoader sobre un Dataset ya construido (helper compartido)."""
-    # persistent_workers: con 50 épocas evita recrear los workers en cada época
-    # (solo aplica si num_workers > 0). No cambia datos ni resultados, solo velocidad.
+    """DataLoader over an already-built Dataset (shared helper)."""
+    # persistent_workers: with 50 epochs avoids recreating workers each epoch
+    # (only applies when num_workers > 0). Does not change data or results, only speed.
     extra = {}
     if num_workers > 0:
         extra["persistent_workers"] = True
@@ -87,10 +87,10 @@ def make_dataloader(entries: list[dict], transform, *, shuffle: bool,
                     num_workers: int = config.NUM_WORKERS,
                     data_dir: Path = config.DATA_DIR,
                     return_path: bool = False) -> DataLoader:
-    """Construye un DataLoader sobre un split ya cargado (un solo transform para todo).
+    """Build a DataLoader over an already-loaded split (single transform for all entries).
 
-    `data_dir` (Etapa 2): raíz desde la que se resuelven las rutas de las entradas.
-    Default = config.DATA_DIR (dataset del paper); pasar config.CMPD300_DIR para CMPD300.
+    `data_dir` (Stage 2): root from which entry paths are resolved.
+    Default = config.DATA_DIR (paper dataset); pass config.CMPD300_DIR for CMPD300.
     """
     ds = MuzzleDataset(entries, transform=transform, data_dir=data_dir,
                        return_path=return_path)
@@ -101,12 +101,12 @@ def build_augmented_entries(entries: list[dict],
                             cap: int = config.AUG_TARGET_CAP,
                             factor: int = config.AUG_FACTOR,
                             seed: int = 0) -> list[dict]:
-    """Entradas EXTRA a sintetizar por clase para agrandar el dataset.
+    """EXTRA entries to synthesize per class to enlarge the dataset.
 
-    PAPER: la augmentation "crea imágenes sintéticas y agranda el dataset", sobre todo para
-    las clases con pocas imágenes, MANTENIENDO los originales. Por clase se expande hasta
-    `min(cap, factor * N_i)`; devuelve solo las copias EXTRA (los originales se agregan
-    aparte con transform limpio). El muestreo es determinista por `seed` (reproducibilidad).
+    PAPER: augmentation "creates synthetic images and enlarges the dataset", especially for
+    classes with few images, KEEPING the originals. Per class, expand up to
+    `min(cap, factor * N_i)`; returns only the EXTRA copies (originals are added separately
+    with the clean transform). Sampling is deterministic by `seed` (reproducibility).
     """
     by_label: dict[int, list[dict]] = defaultdict(list)
     for e in entries:
@@ -122,7 +122,7 @@ def build_augmented_entries(entries: list[dict],
 
 
 def load_augmented_manifest(cache_dir: Path = config.AUG_CACHE_DIR) -> list[dict] | None:
-    """Devuelve el manifest de imágenes sintéticas precomputadas, o None si no existe."""
+    """Return the precomputed synthetic image manifest, or None if it does not exist."""
     mp = Path(cache_dir) / "aug_manifest.json"
     return load_json(mp) if mp.is_file() else None
 
@@ -136,20 +136,20 @@ def make_train_loader(entries: list[dict], *, use_aug: bool, clean_tf, aug_tf,
                       use_precomputed: bool = True,
                       aug_cache_dir: Path = config.AUG_CACHE_DIR,
                       data_dir: Path = config.DATA_DIR) -> DataLoader:
-    """Loader de train.
+    """Training DataLoader.
 
-    - `use_aug=False`: originales con transform limpio (variantes ce / wce).
-    - `use_aug=True` (PAPER): originales limpios + copias sintéticas aumentadas → el dataset
-      se AGRANDA, no se reemplaza. Así el modelo sigue viendo las imágenes a brillo real
-      (evita el mismatch train/test) y gana variedad en las clases con pocas imágenes.
+    - `use_aug=False`: originals with clean transform (ce / wce variants).
+    - `use_aug=True` (PAPER): clean originals + augmented synthetic copies → the dataset is
+      ENLARGED, not replaced. This way the model still sees images at real brightness
+      (avoids train/test mismatch) and gains variety in classes with few images.
 
-    Para las copias sintéticas, si `use_precomputed` y existe el manifest de
-    `scripts/04_precompute_aug.py`, se usan las imágenes FIJAS de disco (transform limpio,
-    ya están aumentadas). Si no, se generan online con `aug_tf` (fallback; p.ej. en smoke o
-    para datasets sin cache como CMPD300 → pasar use_precomputed=False).
+    For synthetic copies, if `use_precomputed` is True and the manifest from
+    `scripts/04_precompute_aug.py` exists, the FIXED disk images are used (clean transform,
+    already augmented). Otherwise, they are generated online with `aug_tf` (fallback; e.g.
+    in smoke-tests or for datasets without an aug cache like CMPD300 → pass use_precomputed=False).
 
-    `data_dir` (Etapa 2): raíz de las rutas de las entradas originales y de las copias
-    online. (El cache precomputado sigue resolviéndose contra `aug_cache_dir`.)
+    `data_dir` (Stage 2): root for the original entries and online copies.
+    (The precomputed cache is always resolved against `aug_cache_dir`.)
     """
     clean_ds = MuzzleDataset(entries, transform=clean_tf, data_dir=data_dir)
     if not use_aug:
@@ -157,10 +157,10 @@ def make_train_loader(entries: list[dict], *, use_aug: bool, clean_tf, aug_tf,
 
     manifest = load_augmented_manifest(aug_cache_dir) if use_precomputed else None
     if manifest is not None:
-        # Precomputado: imágenes ya aumentadas en disco → solo resize + ToTensor.
+        # Precomputed: images already augmented on disk → only resize + ToTensor.
         aug_ds = MuzzleDataset(manifest, transform=clean_tf, data_dir=aug_cache_dir)
     else:
-        # Fallback online: aumentar al vuelo (mismo criterio de expansión).
+        # Online fallback: augment on the fly (same expansion criterion).
         extra = build_augmented_entries(entries, cap=cap, factor=factor, seed=seed)
         aug_ds = MuzzleDataset(extra, transform=aug_tf, data_dir=data_dir)
     train_ds = ConcatDataset([clean_ds, aug_ds])

@@ -1,128 +1,178 @@
-# CLAUDE.md — Contexto del proyecto
+# CLAUDE.md — Project context
 
-> Este archivo es el contexto persistente para Claude Code. Leerlo al inicio de cada sesión, junto con `plan.md`. Si algo de acá entra en conflicto con una instrucción puntual del usuario, preguntar antes de avanzar.
-
----
-
-## Qué es este proyecto
-
-Trabajo práctico final de **Visión Artificial Avanzada** (Universidad de San Andrés). El objetivo de esta etapa es **replicar un paper publicado de identificación individual de ganado bovino a partir de imágenes de hocico (muzzle)** y, sobre esa base, construir progresivamente un benchmark cross-dataset y experimentos de domain adaptation.
-
-**Paper a replicar:** Li, Erickson & Xiong (2022), *Individual Beef Cattle Identification Using Muzzle Images and Deep Learning Techniques*, Animals 12(11):1453. DOI 10.3390/ani12111453.
-
-**Dataset:** Zenodo Muzzle DB (record 6324361). 4923 imágenes de hocico de 268 vacas, organizadas por individuo. Ya está descargado.
-
-**Tarea (esta etapa):** clasificación de conjunto cerrado, 268 vacas = 268 clases. Dada una imagen de hocico, predecir el individuo.
-
-**Qué significa "éxito":** accuracy en test ~96–98%+ (el paper reporta 98.7% con VGG16_BN) **y** reproducir la tendencia de que weighted cross-entropy y data augmentation ayudan a las clases con pocas imágenes. Igualar el número al decimal NO es el objetivo ni es esperable.
+> This file is the persistent context for Claude Code. Read it at the start of each session,
+> together with `plan.md`. If anything here conflicts with a specific instruction from the user,
+> ask before proceeding.
 
 ---
 
-## Estado y roadmap
+## What this project is
 
-- ✅ **Planning** — completo. Spec detallada en `plan.md`.
-- 🔨 **En construcción (alcance ACTUAL):** Fases 0–4 de `plan.md` — inspección de datos, splits, dataset/transforms, modelos (VGG16_BN para replicar + ResNet-50 como backbone propio), entrenamiento, evaluación.
-- 🔜 **Futuro (NO implementar todavía):** extractor de embeddings, protocolo gallery/probe (Rank-1/mAP) cross-dataset, domain adaptation (DANN + self-training). Diseñar el código para que extienda a esto, pero no construirlo aún.
+Final project for **Advanced Computer Vision** (Universidad de San Andrés). The goal of this
+stage is to **replicate a published paper on individual bovine identification from muzzle images**
+and, building on that, progressively construct a cross-dataset benchmark and domain adaptation
+experiments.
 
-**`plan.md` es la fuente de verdad del "qué hacer".** No reimplementar la receta del paper de memoria: está toda ahí (resolución, split, optimizador, losses, augmentation, hiperparámetros). Si Claude Code necesita un valor, va a `plan.md`.
+**Paper to replicate:** Li, Erickson & Xiong (2022), *Individual Beef Cattle Identification
+Using Muzzle Images and Deep Learning Techniques*, Animals 12(11):1453.
+DOI 10.3390/ani12111453.
 
----
+**Dataset:** Zenodo Muzzle DB (record 6324361). 4923 muzzle images of 268 cattle, organized by
+individual. Already downloaded.
 
-## Cómo trabajar en este repo
+**Task (this stage):** closed-set classification, 268 cattle = 268 classes. Given a muzzle
+image, predict the individual.
 
-1. **Leer `plan.md` antes de escribir código.** Trabajar fase por fase, en orden. No saltearse la Fase 0 (inspección de datos): el dataset puede no tener la estructura que asumimos.
-2. **Cambios chicos y revisables.** Un commit por unidad lógica de trabajo, con mensaje claro. No mega-commits.
-3. **Preguntar antes de desviarse de la receta del paper** o de tomar decisiones de arquitectura no triviales. Las desviaciones se documentan (ver más abajo).
-4. **Validar antes de escalar.** Probar el pipeline con 1 semilla y pocas épocas antes de lanzar el sweep completo (3 variantes × 5 semillas). No quemar cuota de GPU debuggeando.
-5. Mantener `README.md` actualizado con cómo correr cada fase.
-
----
-
-## Stack y estructura
-
-- **Lenguaje/frameworks:** Python 3.10+, PyTorch + torchvision, scikit-learn, Pillow, numpy, pandas, tqdm.
-- **Ejecución:** Kaggle Notebooks con GPU (P100 / T4). Ver sección 5 de `plan.md` para detalles de montaje de datos, rutas y límites de sesión.
-- **Estructura de carpetas:** definida en `plan.md` sección 2 (`src/`, `scripts/`, `outputs/`, `config.py` como single source of truth de hiperparámetros y rutas).
+**What success means:** test accuracy ~96–98%+ (the paper reports 98.7% with VGG16_BN) **and**
+reproducing the trend that weighted cross-entropy and data augmentation help the classes with few
+images. Matching the exact decimal is NOT the goal and is not expected.
 
 ---
 
-## Comandos clave
+## Status and roadmap
 
-> Completar/ajustar a medida que se construye. Mantener esta lista al día.
+- ✅ **Planning** — complete. Detailed spec in `plan.md`.
+- ✅ **Stage 1 (phases 0–4):** data inspection, splits, dataset/transforms, models (VGG16_BN to
+  replicate + ResNet-50 as our backbone), training, evaluation.
+- ✅ **Stage 2 (phases 5–6):** embedding extractor, gallery/probe protocol (Rank-1/mAP),
+  cross-dataset and cross-modality gap experiments, ImageNet baseline comparison.
+
+**`plan.md` is the source of truth for "what to do."** Do not re-implement the paper's recipe
+from memory: it is all there (resolution, split, optimizer, losses, augmentation, hyperparameters).
+If Claude Code needs a value, go to `plan.md`.
+
+---
+
+## How to work in this repo
+
+1. **Read `plan.md` before writing code.** Work phase by phase, in order. Do not skip Phase 0
+   (data inspection): the dataset may not have the structure we assumed.
+2. **Small, reviewable changes.** One commit per logical unit of work, with a clear message.
+   No mega-commits.
+3. **Ask before deviating from the paper's recipe** or making non-trivial architectural
+   decisions. Deviations are documented (see below).
+4. **Validate before scaling.** Test the pipeline with 1 seed and few epochs before launching
+   the full sweep (3 variants × 5 seeds). Do not burn GPU quota while debugging.
+5. Keep `README.md` updated with instructions for running each phase.
+
+---
+
+## Stack and structure
+
+- **Language/frameworks:** Python 3.10+, PyTorch + torchvision, scikit-learn, Pillow, numpy,
+  pandas, tqdm.
+- **Execution:** Kaggle Notebooks with GPU (P100 / T4). See section 5 of `plan.md` for details
+  on data mounting, paths, and session limits.
+- **Folder structure:** defined in `plan.md` section 2 (`src/`, `scripts/`, `outputs/`,
+  `config.py` as single source of truth for hyperparameters and paths).
+
+---
+
+## Key commands
+
+> Update this list as the project grows. Keep it current.
 
 ```bash
-# inspección de datos (correr SIEMPRE primero)
+# data inspection (always run first)
 python scripts/00_inspect_data.py
 
-# generar y guardar los splits
+# generate and save splits
 python scripts/01_make_splits.py
 
-# replicación VGG16_BN (3 variantes × N semillas)
+# VGG16_BN replication (3 variants × N seeds)
 python scripts/02_train_vgg.py
 
-# backbone propio ResNet-50
+# own backbone ResNet-50
 python scripts/03_train_resnet.py
 
-# verificación de GPU (en Kaggle)
+# Stage 2: inspect CMPD300 + generate splits
+python scripts/00_inspect_cmpd300.py
+
+# Stage 2: train source encoder on CMPD300
+python scripts/05_train_source.py
+
+# Stage 2: re-ID harness (gap + ImageNet baseline)
+python scripts/06_eval_reid.py --target-dir /path/to/target --compare-imagenet
+
+# GPU check (on Kaggle)
 nvidia-smi
 python -c "import torch; print(torch.cuda.is_available())"
 ```
 
 ---
 
-## Convenciones de código
+## Code conventions
 
-- **`config.py` es la única fuente de hiperparámetros, rutas y semillas.** No hardcodear valores sueltos en scripts.
-- Funciones con type hints; docstrings cortos donde aporten.
-- Logging legible por corrida: imprimir/guardar la config completa al inicio de cada entrenamiento.
-- Nada de notebooks como fuente de verdad de la lógica: la lógica vive en `src/`, los notebooks solo orquestan.
-- Determinismo: fijar seeds de `random`, `numpy`, `torch` y `torch.cuda` en un único lugar (`utils.py`).
-
----
-
-## Principios de responsabilidad (IMPORTANTE)
-
-Esto es un trabajo académico de replicación. La integridad de los resultados es lo primero.
-
-- **Nunca fabricar, ajustar a mano ni hardcodear métricas para que "den" como el paper.** Reportar los números reales, incluso si son peores. Si no logramos reproducir, se documenta el porqué — eso es un resultado válido, no un fracaso a ocultar.
-- **Documentar toda desviación de la receta del paper.** Si por alguna razón cambiamos resolución, normalización, optimizador, etc., queda anotado explícitamente (en el README o en un `DEVIATIONS.md`) con la justificación. La replicación se evalúa por fidelidad, no solo por el número.
-- **Reproducibilidad real:** splits guardados a disco y reusados (no re-splitear por corrida), seeds fijas, versiones de librerías registradas, config logueada con cada run.
-- **Separar claramente "lo que dice el paper" de "lo que decidimos nosotros"** en comentarios y documentación.
-- **Resultados honestos por clase, no solo el agregado.** Reportar accuracy por clase (especialmente las 4 vacas con 4 imágenes), no esconder el peor caso detrás del promedio.
+- **`config.py` is the only source of hyperparameters, paths, and seeds.** Do not hardcode
+  loose values in scripts.
+- Functions with type hints; short docstrings where they add value.
+- Readable logging per run: print/save the full config at the start of each training run.
+- No notebooks as source of truth for logic: logic lives in `src/`, notebooks only orchestrate.
+- Determinism: fix seeds for `random`, `numpy`, `torch`, and `torch.cuda` in a single place
+  (`utils.py`).
 
 ---
 
-## Higiene del repositorio
+## Responsibility principles (IMPORTANT)
 
-- **NO commitear el dataset** ni binarios pesados (imágenes, checkpoints grandes). Usar `.gitignore`. El dataset vive en Kaggle (montado en `/kaggle/input/...`), no en git.
-- **NO commitear credenciales, tokens ni API keys.** Nada de Kaggle/GCP en el repo.
-- `outputs/` (checkpoints, resultados) fuera de git salvo las tablas/CSV de métricas finales, que sí conviene versionar.
-- `requirements.txt` con versiones fijadas.
-- Commits atómicos y descriptivos.
+This is an academic replication project. The integrity of results comes first.
 
----
-
-## Hechos del dominio que NO hay que equivocar
-
-- **Es HOCICO (muzzle), no cara.** El patrón del hocico es como una huella digital individual. No confundir con reconocimiento facial bovino (es otra modalidad).
-- **268 clases**, no 256.
-- **El mejor modelo del paper es VGG16_BN, no ResNet-50.** Para replicar el 98.7% se usa VGG16_BN. ResNet-50 se entrena además como backbone propio para reutilizar en domain adaptation, pero no es el modelo que replica el número del paper.
-- **Esta etapa es clasificación closed-set: el split es POR IMAGEN, las 268 clases en train/val/test.** El split por animal / identidades disjuntas (gallery/probe, Rank-1/mAP) recién aplica en la fase futura de re-identificación cross-dataset. No mezclar los dos protocolos.
-- **Backbone congelado** para la replicación fiel (el paper solo fine-tunea las FC).
-- **Normalización [0,1] crudo**, no mean/std de ImageNet (lo que usa el paper).
+- **Never fabricate, manually adjust, or hardcode metrics to match the paper.** Report real
+  numbers, even if they are worse. If we cannot reproduce, we document why — that is a valid
+  result, not a failure to hide.
+- **Document every deviation from the paper's recipe.** If for any reason we change resolution,
+  normalization, optimizer, etc., it goes into `DEVIATIONS.md` with a justification. The
+  replication is evaluated by fidelity, not just by the number.
+- **Real reproducibility:** splits saved to disk and reused (no re-splitting per run), fixed
+  seeds, pinned library versions, config logged with each run.
+- **Clearly separate "what the paper says" from "what we decided"** in comments and docs.
+- **Honest per-class results, not just the aggregate.** Report per-class accuracy (especially
+  the 8 cattle with 4 images); do not hide the worst case behind the average.
 
 ---
 
-## Qué NO hacer
+## Repository hygiene
 
-- No empezar a entrenar sin haber corrido la Fase 0 y confirmado la estructura real del dataset.
-- No implementar las fases futuras (embeddings, DANN, self-training) en esta etapa; solo dejar el diseño preparado para extenderlas.
-- No introducir frameworks pesados (PyTorch Lightning, Hydra, etc.) sin acordarlo: mantener el stack simple y legible.
-- No optimizar prematuramente (multi-GPU, mixed precision, etc.) hasta tener el baseline andando y validado.
-- No "mejorar" la receta del paper durante la replicación. Primero replicar fiel; las mejoras vienen después y por separado.
+- **DO NOT commit the dataset** or heavy binaries (images, large checkpoints). Use `.gitignore`.
+  The dataset lives on Kaggle (mounted at `/kaggle/input/...`), not in git.
+- **DO NOT commit credentials, tokens, or API keys.** No Kaggle/GCP credentials in the repo.
+- `outputs/` (checkpoints, results) out of git except for final metric tables/CSVs, which are
+  worth versioning.
+- `requirements.txt` with pinned versions.
+- Atomic, descriptive commits.
 
 ---
 
-## Referencia
+## Domain facts not to get wrong
 
-Li, G.; Erickson, G.E.; Xiong, Y. (2022). *Individual Beef Cattle Identification Using Muzzle Images and Deep Learning Techniques.* Animals 12(11):1453. DOI: 10.3390/ani12111453. Dataset: Zenodo record 6324361.
+- **It is MUZZLE (not face).** The muzzle pattern is like an individual fingerprint. Do not
+  confuse with bovine facial recognition (a different modality).
+- **268 classes**, not 256.
+- **The best model in the paper is VGG16_BN, not ResNet-50.** To replicate 98.7% use
+  VGG16_BN. ResNet-50 is also trained as our own backbone for domain adaptation, but it is
+  not the model that replicates the paper's number.
+- **Stage 1 is closed-set classification: the split is PER IMAGE, all 268 classes in
+  train/val/test.** The per-animal / disjoint-identity split (gallery/probe, Rank-1/mAP)
+  only applies in Stage 2's re-identification protocol. Do not mix the two protocols.
+- **Frozen backbone** for a faithful replication (the paper only fine-tunes the FC layers).
+- **Raw [0,1] normalization**, not ImageNet mean/std (what the paper uses).
+
+---
+
+## What NOT to do
+
+- Do not start training without having run Phase 0 and confirmed the real dataset structure.
+- Do not introduce heavy frameworks (PyTorch Lightning, Hydra, etc.) without agreement:
+  keep the stack simple and readable.
+- Do not optimize prematurely (multi-GPU, mixed precision, etc.) until the baseline is running
+  and validated.
+- Do not "improve" the paper's recipe during replication. Replicate faithfully first;
+  improvements come separately and afterwards.
+
+---
+
+## Reference
+
+Li, G.; Erickson, G.E.; Xiong, Y. (2022). *Individual Beef Cattle Identification Using
+Muzzle Images and Deep Learning Techniques.* Animals 12(11):1453.
+DOI: 10.3390/ani12111453. Dataset: Zenodo record 6324361.

@@ -1,14 +1,16 @@
-"""06_eval_reid.py — Harness de re-ID (Fase 6): sanity + gap + baseline ImageNet.
+"""06_eval_reid.py — Re-ID harness (Phase 6): sanity + gap + ImageNet baseline.
 
-- `--source-dir`: sanity intra-CMPD300 (valida el harness).
-- `--target-dir`: gap sobre el target (Ahmed caras o Zenodo hocicos).
-- `--by-session`: split honesto por sesión (para datasets con ráfagas y timestamp, tipo Ahmed).
-- `--single-shot`: 1 sola imagen (o sesión) por individuo en gallery. Reduce la fuga por fotos
-  parecidas (una única referencia por individuo → más difícil acertar por similitud de foto).
-- `--compare-imagenet`: además ResNet-50 de ImageNet puro sobre el MISMO split. Si iguala a tu
-  encoder, el número no mide reconocimiento de hocico.
+- `--source-dir`: intra-CMPD300 sanity check (validates the harness plumbing).
+- `--target-dir`: gap on the target domain (Ahmed faces or Zenodo muzzles).
+- `--by-session`: honest session-based split (for datasets with burst photos and
+  timestamps, like Ahmed). Avoids matching twin photos from the same burst.
+- `--single-shot`: 1 image (or session) per individual in gallery. Reduces leakage
+  from look-alike photos — a single reference per individual makes it harder to match
+  by photo similarity instead of biometrics.
+- `--compare-imagenet`: also run plain ImageNet ResNet-50 on THE SAME split. If it
+  matches your encoder, the number is not measuring muzzle recognition.
 
-Uso:
+Usage:
     python scripts/06_eval_reid.py --source-dir .../train --target-dir .../zenodo \\
                                    --single-shot --compare-imagenet
 """
@@ -44,13 +46,13 @@ def build_split(entries, args, by_session):
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Harness de re-ID (Fase 6).")
+    ap = argparse.ArgumentParser(description="Re-ID harness (Phase 6).")
     ap.add_argument("--ckpt", default=str(config.CHECKPOINTS_DIR / "cmpd300_source.pt"))
     ap.add_argument("--source-dir", default=None)
     ap.add_argument("--target-dir", default=None)
     ap.add_argument("--by-session", action="store_true")
     ap.add_argument("--single-shot", action="store_true",
-                    help="1 imagen/sesión por individuo en gallery (reduce fuga por fotos gemelas).")
+                    help="1 image/session per individual in gallery (reduces twin-photo leakage).")
     ap.add_argument("--compare-imagenet", action="store_true")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--min-images", type=int, default=2)
@@ -62,68 +64,68 @@ def main() -> None:
     log = get_logger("reid.eval")
     config.ensure_output_dirs()
     if not args.source_dir and not args.target_dir:
-        log.error("Pasá --source-dir y/o --target-dir."); sys.exit(1)
+        log.error("Pass --source-dir and/or --target-dir."); sys.exit(1)
 
     source = EmbeddingExtractor.from_checkpoint(Path(args.ckpt))
     results = {"ckpt": args.ckpt, "single_shot": args.single_shot}
 
-    # ---- SANITY intra-CMPD300 (split al azar) ----
+    # ---- SANITY intra-CMPD300 (random split) ----
     if args.source_dir:
-        log.info("== SANITY intra-CMPD300 (identidades VISTAS → plomería) ==")
+        log.info("== SANITY intra-CMPD300 (SEEN identities → plumbing check) ==")
         entries, _ = entries_from_folders(Path(args.source_dir), max_per_id=args.max_per_id)
         gal, prb, info = split_gallery_probe(entries, seed=args.seed, min_images=args.min_images)
         m = score(source, gal, prb, Path(args.source_dir), args.batch_size)
-        results["sanity_cmpd300"] = {**m, **info, "nota": "leakage; solo valida el harness"}
-        log.info(f"  source -> Rank-1={m['rank1']:.4f} mAP={m['mAP']:.4f} (esperado ALTO)")
+        results["sanity_cmpd300"] = {**m, **info, "note": "leakage; only validates plumbing"}
+        log.info(f"  source -> Rank-1={m['rank1']:.4f} mAP={m['mAP']:.4f} (expected HIGH)")
 
-    # ---- GAP sobre el target (mismo split para todos los encoders) ----
+    # ---- GAP on the target (same split for all encoders) ----
     if args.target_dir:
         tag = "single-shot" if args.single_shot else "multi-shot"
-        tag += " por sesión" if args.by_session else ""
-        log.info(f"== GAP crudo sobre target — split {tag} ==")
+        tag += " by session" if args.by_session else ""
+        log.info(f"== RAW GAP on target — split {tag} ==")
         entries, _ = entries_from_folders(Path(args.target_dir), max_per_id=args.max_per_id)
         gal, prb, info = build_split(entries, args, args.by_session)
-        log.info(f"  {info['n_ids_used']} individuos | gallery={info['n_gallery']} "
+        log.info(f"  {info['n_ids_used']} individuals | gallery={info['n_gallery']} "
                  f"probe={info['n_probe']} | {info}")
         if not gal or not prb:
-            log.error("gallery o probe vacíos."); sys.exit(1)
+            log.error("gallery or probe is empty."); sys.exit(1)
 
         m_src = score(source, gal, prb, Path(args.target_dir), args.batch_size)
         results["gap_source"] = {**m_src, **info, "encoder": source.name}
-        log.info(f"  source(hocico) -> Rank-1={m_src['rank1']:.4f} mAP={m_src['mAP']:.4f}")
+        log.info(f"  source(muzzle) -> Rank-1={m_src['rank1']:.4f} mAP={m_src['mAP']:.4f}")
 
         if args.compare_imagenet:
             imagenet = EmbeddingExtractor.from_imagenet()
             m_in = score(imagenet, gal, prb, Path(args.target_dir), args.batch_size)
             results["gap_imagenet"] = {**m_in, "encoder": "imagenet_resnet50"}
-            log.info(f"  imagenet(puro) -> Rank-1={m_in['rank1']:.4f} mAP={m_in['mAP']:.4f}")
+            log.info(f"  imagenet(plain) -> Rank-1={m_in['rank1']:.4f} mAP={m_in['mAP']:.4f}")
 
     out = config.RESULTS_DIR / "06_reid_summary.json"
     save_json(results, out)
-    log.info(f"resumen guardado en {out}")
+    log.info(f"summary saved to {out}")
 
-    # ---- resumen legible ----
+    # ---- Human-readable summary ----
     print("\n" + "=" * 66)
-    print("FASE 6 — RE-ID" + ("  (SINGLE-SHOT)" if args.single_shot else "  (multi-shot)"))
+    print("PHASE 6 — RE-ID" + ("  (SINGLE-SHOT)" if args.single_shot else "  (multi-shot)"))
     print("=" * 66)
     if "sanity_cmpd300" in results:
         s = results["sanity_cmpd300"]
-        print(f"SANITY CMPD300 (plomería)   : Rank-1={s['rank1']:.3f}  mAP={s['mAP']:.3f}")
+        print(f"SANITY CMPD300 (plumbing)    : Rank-1={s['rank1']:.3f}  mAP={s['mAP']:.3f}")
     if "gap_source" in results:
         g = results["gap_source"]
-        print(f"Target — encoder de hocico  : Rank-1={g['rank1']:.3f}  mAP={g['mAP']:.3f}"
+        print(f"Target — muzzle encoder      : Rank-1={g['rank1']:.3f}  mAP={g['mAP']:.3f}"
               f"  ({g['n_ids_used']} ids, {g['n_probe']} probes)")
     if "gap_imagenet" in results:
         i = results["gap_imagenet"]
-        print(f"Target — ImageNet PURO      : Rank-1={i['rank1']:.3f}  mAP={i['mAP']:.3f}")
+        print(f"Target — PLAIN ImageNet      : Rank-1={i['rank1']:.3f}  mAP={i['mAP']:.3f}")
         d = results["gap_source"]["rank1"] - i["rank1"]
         print("-" * 66)
-        print(f"Ventaja del encoder de hocico sobre ImageNet: {d:+.3f} en Rank-1")
+        print(f"Muzzle encoder advantage over ImageNet: {d:+.3f} in Rank-1")
         if d < 0.05:
-            print("⚠ El encoder de hocico NO aporta sobre ImageNet, ni con single-shot.")
-            print("  El número no mide biometría de hocico → limitación de datos, hablar con Gastón.")
+            print("WARNING: muzzle encoder does NOT improve over ImageNet, even with single-shot.")
+            print("  The metric does not measure muzzle biometrics → data limitation.")
         else:
-            print("✓ El encoder de hocico aporta sobre ImageNet: hay señal real de hocico.")
+            print("OK: muzzle encoder improves over ImageNet: real muzzle signal present.")
     print("=" * 66)
 
 

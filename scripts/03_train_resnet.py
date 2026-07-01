@@ -1,29 +1,29 @@
-"""03_train_resnet.py — Fase 4: backbone propio ResNet-50.
+"""03_train_resnet.py — Phase 4: own ResNet-50 backbone.
 
-PAPER: misma receta que la replicación VGG (resolución 300x300, [0,1] crudo, SGD
-mom=0.9, lr=0.001, StepLR(7, 0.1), 50 épocas). ResNet-50 NO es el modelo que replica
-el 98.7% (ese es VGG16_BN); lo entrenamos como backbone propio para reutilizar en la
-fase futura de domain adaptation.
+PAPER: same recipe as the VGG replication (300x300, raw [0,1], SGD mom=0.9,
+lr=0.001, StepLR(7, 0.1), 50 epochs). ResNet-50 is NOT the model that replicates
+the 98.7% (that is VGG16_BN); we train it as our own backbone for reuse in the
+future domain adaptation stage.
 
-Corre DOS modos (ver plan.md §Fase 4):
-  - freeze   : freeze_backbone=True  → solo FC, como el paper.
-  - finetune : freeze_backbone=False → fine-tune completo.
+Runs TWO modes (see plan.md §Phase 4):
+  - freeze   : freeze_backbone=True  → FC only, as in the paper.
+  - finetune : freeze_backbone=False → full fine-tuning.
 
-Para cada (modo × semilla): entrena, evalúa en test (global + balanced + por clase) y
-agrega media ± std. El MEJOR run (por val accuracy, sin mirar test → sin fuga) se
-copia a un checkpoint canónico en outputs/checkpoints/ — ese es el backbone que
-reutiliza domain adaptation.
+For each (mode × seed): train, evaluate on test (global + balanced + per-class) and
+aggregate mean ± std. The BEST run (by val accuracy, without looking at test → no
+leakage) is copied to a canonical checkpoint in outputs/checkpoints/ — that is the
+backbone reused by domain adaptation.
 
-NOSOTROS (el plan deja abierto, ver más abajo): por defecto loss=ce, sin augmentation
-y 1 semilla (este es nuestro backbone, no el número de replicación del paper). Todo
-override-able por flags si se quiere un backbone más fuerte (p.ej. --aug).
+OUR CHOICE (plan leaves this open): default loss=ce, no augmentation and 1 seed
+(this is our backbone, not the paper's replication number). All overrideable by flags
+if a stronger backbone is desired (e.g. --aug).
 
-Uso:
-    python scripts/03_train_resnet.py                      # freeze + finetune, seed 0, 50 épocas
-    python scripts/03_train_resnet.py --modes freeze       # solo modo paper
-    python scripts/03_train_resnet.py --aug --loss wce     # backbone más fuerte
-    python scripts/03_train_resnet.py --seeds 0 1 2        # varias semillas → mean±std
-    python scripts/03_train_resnet.py --smoke              # pipeline rápido en CPU (subset, 2 épocas)
+Usage:
+    python scripts/03_train_resnet.py                      # freeze + finetune, seed 0, 50 epochs
+    python scripts/03_train_resnet.py --modes freeze       # paper mode only
+    python scripts/03_train_resnet.py --aug --loss wce     # stronger backbone
+    python scripts/03_train_resnet.py --seeds 0 1 2        # multiple seeds → mean±std
+    python scripts/03_train_resnet.py --smoke              # quick pipeline on CPU (subset, 2 epochs)
 """
 from __future__ import annotations
 
@@ -42,22 +42,22 @@ from src.utils import get_device, get_logger, load_json, save_json  # noqa: E402
 
 MODEL = "resnet50"
 
-# modo -> freeze_backbone.
+# mode -> freeze_backbone.
 MODES = {
-    "freeze":   True,    # PAPER: solo FC.
-    "finetune": False,   # NOSOTROS: fine-tune completo (mejor backbone para DA).
+    "freeze":   True,    # PAPER: FC only.
+    "finetune": False,   # OUR CHOICE: full fine-tune (better backbone for DA).
 }
 
-# IDs de las 8 clases con 4 imágenes (ver DEVIATIONS.md). Reporte focalizado: no
-# esconder el peor caso detrás del promedio (principio de integridad de CLAUDE.md).
+# IDs of the 8 classes with 4 images (see DEVIATIONS.md). Focused report: do not
+# hide the worst case behind the average (integrity principle from CLAUDE.md).
 SMALL_CLASSES = ["cattle_2100", "cattle_3420", "cattle_4549", "cattle_5208",
                  "cattle_5355", "cattle_5630", "cattle_5925", "cattle_8050"]
 
 
 def _small_class_accs(ev: dict) -> dict[str, float | None]:
-    """Accuracy en test de las 8 clases con 4 imágenes (None si no hay muestras)."""
+    """Test accuracy for the 8 classes with 4 images (None if no samples)."""
     try:
-        label_map = load_json(config.SPLITS_DIR / "label_map.json")  # nombre -> idx
+        label_map = load_json(config.SPLITS_DIR / "label_map.json")  # name -> idx
     except FileNotFoundError:
         return {}
     out: dict[str, float | None] = {}
@@ -75,37 +75,37 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--modes", nargs="+", default=list(MODES.keys()),
                     choices=list(MODES.keys()),
-                    help="freeze (paper) y/o finetune (full fine-tune).")
+                    help="freeze (paper) and/or finetune (full fine-tune).")
     ap.add_argument("--seeds", type=int, nargs="+", default=[0],
-                    help="Semillas. Default 1 sola (este es el backbone, no la replicación).")
+                    help="Seeds. Default: 1 only (this is the backbone, not the replication).")
     ap.add_argument("--epochs", type=int, default=config.EPOCHS)
     ap.add_argument("--loss", default="ce", choices=["ce", "wce"],
-                    help="Loss base. Default ce (receta base del paper).")
+                    help="Base loss. Default ce (paper's base recipe).")
     ap.add_argument("--aug", action="store_true",
-                    help="Data augmentation en train (off por defecto).")
+                    help="Data augmentation in train (off by default).")
     ap.add_argument("--smoke", action="store_true",
-                    help="Pipeline rápido: 1 semilla, 2 épocas, subset chico, sin pesos ImageNet.")
+                    help="Quick pipeline: 1 seed, 2 epochs, small subset, no ImageNet weights.")
     args = ap.parse_args()
 
     log = get_logger("03_train_resnet")
     device = get_device()
     config.ensure_output_dirs()
 
-    # Smoke: validar el pipeline punta a punta, no la ciencia. Subset más chico que
-    # en VGG porque el full fine-tune de ResNet-50 en CPU es pesado.
+    # Smoke: validate the end-to-end pipeline, not the science. Smaller subset than
+    # VGG because full fine-tuning of ResNet-50 on CPU is heavy.
     smoke = args.smoke
     seeds = [0] if smoke else args.seeds
     epochs = 2 if smoke else args.epochs
     max_train = 16 if smoke else None
     max_val = 8 if smoke else None
     max_test = 8 if smoke else None
-    pretrained = not smoke  # en smoke evitamos bajar 98 MB de pesos ImageNet
+    pretrained = not smoke  # avoid downloading 98 MB of ImageNet weights in smoke mode
 
     log.info(f"device={device} | model={MODEL} | modes={args.modes} | "
              f"loss={args.loss} | aug={args.aug} | seeds={seeds} | epochs={epochs} | smoke={smoke}")
 
     results: dict[str, list[dict]] = {m: [] for m in args.modes}
-    # Mejor run global por VAL accuracy (selección sin fuga de test) → backbone canónico.
+    # Best overall run by VAL accuracy (selection without test leakage) → canonical backbone.
     best_overall: dict | None = None
 
     for mode in args.modes:
@@ -144,11 +144,11 @@ def main() -> int:
                 "perclass_csv": str(csv_path),
             }
             results[mode].append(entry)
-            # Selección por val acc (NO por test → sin fuga).
+            # Select by val acc (NOT by test → no leakage).
             if best_overall is None or run["best_val_acc"] > best_overall["best_val_acc"]:
                 best_overall = entry
 
-    # ---- Resumen media ± std por modo ----
+    # ---- Mean ± std summary per mode ----
     summary = {}
     for mode, runs in results.items():
         gaccs = [r["test_global_acc"] for r in runs]
@@ -162,11 +162,11 @@ def main() -> int:
             "runs": runs,
         }
 
-    # ---- Backbone canónico: copiar el mejor checkpoint (por val acc) ----
+    # ---- Canonical backbone: copy the best checkpoint (by val acc) ----
     backbone_name = "resnet50_backbone_smoke.pt" if smoke else "resnet50_backbone.pt"
     backbone_path = config.CHECKPOINTS_DIR / backbone_name
     shutil.copyfile(best_overall["checkpoint"], backbone_path)
-    log.info(f"Backbone canónico (mejor por val acc: {best_overall['mode']} "
+    log.info(f"Canonical backbone (best by val acc: {best_overall['mode']} "
              f"s{best_overall['seed']}, val={best_overall['best_val_acc']:.4f}) → {backbone_path}")
 
     out = config.RESULTS_DIR / ("03_resnet_summary_smoke.json" if smoke else "03_resnet_summary.json")
@@ -179,24 +179,24 @@ def main() -> int:
         "summary": summary,
     }, out)
 
-    # ---- Reporte ----
+    # ---- Report ----
     print("\n" + "=" * 70)
-    print(f"RESUMEN BACKBONE PROPIO — {MODEL}" + (" [SMOKE]" if smoke else ""))
+    print(f"OWN BACKBONE SUMMARY — {MODEL}" + (" [SMOKE]" if smoke else ""))
     print("=" * 70)
-    print(f"{'modo':10} | {'test global (mean±std)':24} | {'balanced (mean±std)':22}")
+    print(f"{'mode':10} | {'test global (mean±std)':24} | {'balanced (mean±std)':22}")
     print("-" * 70)
     for m in args.modes:
         s = summary[m]
         print(f"{m:10} | {s['test_global_mean']:.4f} ± {s['test_global_std']:.4f}        "
               f"| {s['test_balanced_mean']:.4f} ± {s['test_balanced_std']:.4f}")
     print("=" * 70)
-    print(f"Mejor run (por val acc): {best_overall['mode']} s{best_overall['seed']} "
+    print(f"Best run (by val acc): {best_overall['mode']} s{best_overall['seed']} "
           f"| val={best_overall['best_val_acc']:.4f} test={best_overall['test_global_acc']:.4f}")
-    print(f"Backbone para domain adaptation: {backbone_path}")
-    print(f"Resumen: {out}")
+    print(f"Domain adaptation backbone: {backbone_path}")
+    print(f"Summary: {out}")
     if not smoke:
-        print("\nNota: ResNet-50 NO replica el 98.7% del paper (ese es VGG16_BN). Acá "
-              "interesa la calidad del backbone para reusar en domain adaptation.")
+        print("\nNote: ResNet-50 does NOT replicate the paper's 98.7% (that is VGG16_BN). Here "
+              "we care about backbone quality for reuse in domain adaptation.")
     return 0
 
 

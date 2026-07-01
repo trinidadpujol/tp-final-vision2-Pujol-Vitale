@@ -1,22 +1,23 @@
-"""02_train_vgg.py — Fase 3: replicación completa con VGG16_BN.
+"""02_train_vgg.py — Phase 3: full replication with VGG16_BN.
 
-PAPER: VGG16_BN, backbone congelado (solo FC), 3 variantes de optimización de
-desbalance, 5 semillas, accuracy media ± std en test.
+PAPER: VGG16_BN, frozen backbone (FC only), 4 class-imbalance variants,
+5 seeds, mean ± std test accuracy.
 
-Variantes:
-  (a) ce        : Cross-Entropy, sin augmentation
+Variants:
+  (a) ce        : Cross-Entropy, no augmentation
   (b) ce_aug    : Cross-Entropy + data augmentation
-  (c) wce       : Weighted Cross-Entropy, sin augmentation
+  (c) wce       : Weighted Cross-Entropy, no augmentation
+  (d) wce_aug   : Weighted Cross-Entropy + data augmentation
 
-Para cada (variante × semilla): entrena, evalúa en test (global + por clase) y
-agrega media ± std. Guarda tabla resumen y CSV por clase del mejor run de cada
-variante (con foco en las clases con 4 imágenes).
+For each (variant × seed): train, evaluate on test (global + per-class) and
+aggregate mean ± std. Save summary table and per-class CSV for the best run of
+each variant (focusing on the 4-image classes).
 
-Uso:
-    python scripts/02_train_vgg.py                 # replicación completa (5 semillas, 50 épocas)
-    python scripts/02_train_vgg.py --seeds 0 1     # subset de semillas
+Usage:
+    python scripts/02_train_vgg.py                 # full replication (3 seeds, 50 epochs)
+    python scripts/02_train_vgg.py --seeds 0 1     # subset of seeds
     python scripts/02_train_vgg.py --epochs 50
-    python scripts/02_train_vgg.py --smoke         # pipeline rápido: 1 semilla, 2 épocas, subset
+    python scripts/02_train_vgg.py --smoke         # quick pipeline: 1 seed, 2 epochs, subset
 """
 from __future__ import annotations
 
@@ -33,13 +34,13 @@ from src.train import RunConfig, train_one_run  # noqa: E402
 from src.utils import get_device, get_logger, load_json, save_json  # noqa: E402
 
 VARIANTS = {
-    "ce":     {"loss_kind": "ce",  "use_aug": False},
-    "ce_aug": {"loss_kind": "ce",  "use_aug": True},
-    "wce":    {"loss_kind": "wce", "use_aug": False},
+    "ce":      {"loss_kind": "ce",  "use_aug": False},
+    "ce_aug":  {"loss_kind": "ce",  "use_aug": True},
+    "wce":     {"loss_kind": "wce", "use_aug": False},
     "wce_aug": {"loss_kind": "wce", "use_aug": True},
 }
 
-# IDs de las clases con 4 imágenes (las críticas del paper). Para reporte focalizado.
+# IDs of the 4-image classes (the critical ones from the paper). For focused reporting.
 SMALL_CLASSES = ["cattle_2100", "cattle_3420", "cattle_4549", "cattle_5208",
                  "cattle_5355", "cattle_5630", "cattle_5925", "cattle_8050"]
 
@@ -51,30 +52,30 @@ def main() -> int:
     ap.add_argument("--variants", nargs="+", default=list(VARIANTS.keys()))
     ap.add_argument("--model", default="vgg16_bn")
     ap.add_argument("--smoke", action="store_true",
-                    help="Pipeline rápido: 1 semilla, 2 épocas, subset chico, sin pesos ImageNet.")
+                    help="Quick pipeline: 1 seed, 2 epochs, small subset, no ImageNet weights.")
     ap.add_argument("--fresh", action="store_true",
-                    help="Ignorar progreso previo (de una corrida cortada) y arrancar de cero.")
+                    help="Ignore previous progress (from an interrupted run) and start fresh.")
     args = ap.parse_args()
 
     log = get_logger("02_train_vgg")
     device = get_device()
     config.ensure_output_dirs()
 
-    # Smoke: validar el pipeline punta a punta, no la ciencia.
+    # Smoke: validate the end-to-end pipeline, not the science.
     smoke = args.smoke
     seeds = [0] if smoke else args.seeds
     epochs = 2 if smoke else args.epochs
     max_train = 32 if smoke else None
     max_val = 16 if smoke else None
     max_test = 16 if smoke else None
-    pretrained = not smoke  # en smoke evitamos bajar 528 MB
+    pretrained = not smoke  # avoid downloading 528 MB in smoke mode
 
     log.info(f"device={device} | model={args.model} | variants={args.variants} | "
              f"seeds={seeds} | epochs={epochs} | smoke={smoke}")
 
     out = config.RESULTS_DIR / ("02_vgg_summary_smoke.json" if smoke else "02_vgg_summary.json")
-    # Progreso intermedio: se reescribe después de cada (variante, semilla) para poder
-    # retomar el sweep si el entorno se desconecta a mitad de camino (p.ej. Colab/Kaggle).
+    # Intermediate progress: rewritten after each (variant, seed) to allow resuming
+    # the sweep if the environment disconnects mid-run (e.g. Colab/Kaggle).
     progress_path = out.with_suffix(".progress.json")
 
     results: dict[str, list[dict]] = {v: [] for v in args.variants}
@@ -87,14 +88,14 @@ def main() -> int:
                 results[variant] = list(runs)
                 done.update((variant, r["seed"]) for r in runs)
         if done:
-            log.info(f"Retomando sweep: {len(done)} corrida(s) ya completadas "
-                     f"({progress_path}). Usar --fresh para ignorar y arrancar de cero.")
+            log.info(f"Resuming sweep: {len(done)} run(s) already completed "
+                     f"({progress_path}). Use --fresh to ignore and restart from scratch.")
 
     for variant in args.variants:
         spec = VARIANTS[variant]
         for seed in seeds:
             if (variant, seed) in done:
-                log.info(f"[{variant} s{seed}] ya completada, salteando.")
+                log.info(f"[{variant} s{seed}] already completed, skipping.")
                 continue
             rc = RunConfig(
                 model_name=args.model, loss_kind=spec["loss_kind"], use_aug=spec["use_aug"],
@@ -104,7 +105,7 @@ def main() -> int:
                 tag=f"{args.model}_{variant}_s{seed}" + ("_smoke" if smoke else ""),
             )
             run = train_one_run(rc, device=device)
-            # Evaluar en test el mejor checkpoint de esta corrida.
+            # Evaluate on test the best checkpoint from this run.
             csv_path = config.RESULTS_DIR / f"perclass_{rc.tag}.csv"
             ev = evaluate_checkpoint(run["checkpoint"], device=device,
                                      max_test=max_test, save_csv=csv_path)
@@ -123,7 +124,7 @@ def main() -> int:
                 save_json({"model": args.model, "epochs": epochs, "seeds": seeds,
                           "device": device, "results": results}, progress_path)
 
-    # ---- Resumen media ± std por variante ----
+    # ---- Mean ± std summary per variant ----
     summary = {}
     for variant, runs in results.items():
         gaccs = [r["test_global_acc"] for r in runs]
@@ -140,21 +141,21 @@ def main() -> int:
     save_json({"model": args.model, "epochs": epochs, "seeds": seeds,
                "device": device, "smoke": smoke, "summary": summary}, out)
 
-    # ---- Reporte ----
+    # ---- Report ----
     print("\n" + "=" * 68)
-    print(f"RESUMEN REPLICACIÓN — {args.model}" + (" [SMOKE]" if smoke else ""))
+    print(f"REPLICATION SUMMARY — {args.model}" + (" [SMOKE]" if smoke else ""))
     print("=" * 68)
-    print(f"{'variante':10} | {'test global (mean±std)':24} | {'balanced (mean±std)':22}")
+    print(f"{'variant':10} | {'test global (mean±std)':24} | {'balanced (mean±std)':22}")
     print("-" * 68)
     for v in args.variants:
         s = summary[v]
         print(f"{v:10} | {s['test_global_mean']:.4f} ± {s['test_global_std']:.4f}        "
               f"| {s['test_balanced_mean']:.4f} ± {s['test_balanced_std']:.4f}")
     print("=" * 68)
-    print(f"Resumen: {out}")
+    print(f"Summary: {out}")
     if not smoke:
-        print("\nValidación de éxito esperada (paper): mejor variante ~96-98%+, y "
-              "ce_aug/wce deben mejorar la accuracy de las clases con 4 imágenes vs ce.")
+        print("\nExpected success validation (paper): best variant ~96-98%+, and "
+              "ce_aug/wce should improve accuracy on 4-image classes vs ce.")
     return 0
 
 

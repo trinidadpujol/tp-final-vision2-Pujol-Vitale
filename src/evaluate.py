@@ -1,7 +1,8 @@
-"""evaluate.py — Evaluación en test: top-1 global y accuracy POR CLASE.
+"""evaluate.py — Test evaluation: top-1 global accuracy and PER-CLASS accuracy.
 
-PAPER: top-1 accuracy global + por clase. Reportamos también las clases con pocas
-imágenes (las de 4 imágenes) sin esconderlas detrás del promedio. Opcional: ms/imagen.
+PAPER: top-1 global accuracy + per-class accuracy. We also report the classes
+with few images (those with 4 images) without hiding them behind the average.
+Optional: ms/image.
 """
 from __future__ import annotations
 
@@ -21,7 +22,7 @@ from src.utils import get_device, load_json
 @torch.no_grad()
 def evaluate(model: nn.Module, loader, device: str,
              num_classes: int = config.NUM_CLASSES) -> dict:
-    """Devuelve accuracy global, accuracy por clase y timing (ms/imagen)."""
+    """Return global accuracy, per-class accuracy, and timing (ms/image)."""
     model.eval()
     per_correct = torch.zeros(num_classes)
     per_total = torch.zeros(num_classes)
@@ -41,7 +42,7 @@ def evaluate(model: nn.Module, loader, device: str,
     present = per_total > 0
     per_class_acc = torch.where(present, per_correct / per_total.clamp(min=1),
                                 torch.full_like(per_total, float("nan")))
-    # accuracy media POR CLASE (balanced) además de la global
+    # balanced accuracy (mean per class) in addition to global
     balanced = per_class_acc[present].mean().item()
     return {
         "global_acc": correct / max(total, 1),
@@ -57,7 +58,7 @@ def evaluate(model: nn.Module, loader, device: str,
 def evaluate_checkpoint(checkpoint: str | Path, device: str | None = None,
                         max_test: int | None = None,
                         save_csv: Path | None = None) -> dict:
-    """Carga un checkpoint, evalúa en test y (opcional) guarda CSV por clase."""
+    """Load a checkpoint, evaluate on test, and (optionally) save a per-class CSV."""
     device = device or get_device()
     ckpt = torch.load(checkpoint, map_location=device)
     model = build_model(ckpt["model_name"], num_classes=ckpt["num_classes"],
@@ -79,10 +80,10 @@ def evaluate_checkpoint(checkpoint: str | Path, device: str | None = None,
 
 
 def _save_per_class_csv(res: dict, path: Path) -> None:
-    """Guarda accuracy por clase (label, nombre, n_test, correct, acc)."""
+    """Save per-class accuracy (label, name, n_test, correct, acc)."""
     import csv
 
-    label_map = load_json(config.SPLITS_DIR / "label_map.json")  # nombre -> idx
+    label_map = load_json(config.SPLITS_DIR / "label_map.json")  # name -> idx
     idx_to_name = {v: k for k, v in label_map.items()}
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)

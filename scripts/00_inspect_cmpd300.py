@@ -1,20 +1,20 @@
-"""00_inspect_cmpd300.py — Inspección de CMPD300 + generación de splits (Fase 5).
+"""00_inspect_cmpd300.py — CMPD300 inspection + split generation (Phase 5).
 
-CMPD300 ya viene splitteado en carpetas (train/val/test → subcarpeta por ID), así que
-NO se re-splittea (no hace falta 01_make_splits para este dataset): este script
+CMPD300 already comes split into folders (train/val/test → one subfolder per ID), so
+it is NOT re-split (01_make_splits is not needed for this dataset). This script:
 
-  1. recorre <CMPD300_DIR>/{train,val,test}/<ID>/*.JPG,
-  2. reporta nº de clases, imágenes por split, min/max/media por clase, IDs faltantes
-     en val/test y (opcional) imágenes corruptas,
-  3. construye el label_map (carpeta→entero, por carpetas PRESENTES, no asumiendo 1..N),
-  4. escribe outputs/splits_cmpd300/{train,val,test}.json + label_map.json,
-     en el MISMO formato {"path","label"} que lee src/dataset.py (rutas RELATIVAS a
-     config.CMPD300_DIR → el mismo split sirve en local y en Kaggle).
+  1. walks <CMPD300_DIR>/{train,val,test}/<ID>/*.JPG,
+  2. reports number of classes, images per split, min/max/mean per class, IDs missing
+     from val/test, and (optionally) corrupt images,
+  3. builds the label_map (folder→integer, from PRESENT folders, not assuming 1..N),
+  4. writes outputs/splits_cmpd300/{train,val,test}.json + label_map.json,
+     in the SAME {"path","label"} format read by src/dataset.py (paths RELATIVE to
+     config.CMPD300_DIR → the same split works locally and on Kaggle).
 
-Uso:
-    python scripts/00_inspect_cmpd300.py                  # reporte + genera splits
-    python scripts/00_inspect_cmpd300.py --check-corrupt  # además verifica ilegibles
-    python scripts/00_inspect_cmpd300.py --no-write        # solo reporta, no escribe
+Usage:
+    python scripts/00_inspect_cmpd300.py                  # report + generate splits
+    python scripts/00_inspect_cmpd300.py --check-corrupt  # also verify unreadable images
+    python scripts/00_inspect_cmpd300.py --no-write        # report only, do not write
 """
 from __future__ import annotations
 
@@ -23,31 +23,31 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-# permitir correr desde cualquier cwd (root del proyecto en sys.path)
+# allow running from any cwd (project root on sys.path)
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import config
 from src.utils import get_logger, save_json
 
 SPLITS = ("train", "val", "test")
-IMG_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}  # case-insensitive (CMPD300 usa .JPG)
+IMG_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}  # case-insensitive (CMPD300 uses .JPG)
 
 
 def list_images(d: Path) -> list[Path]:
-    """Imágenes (por extensión, case-insensitive) dentro de una carpeta."""
+    """Images (by extension, case-insensitive) inside a folder."""
     return sorted(p for p in d.iterdir()
                   if p.is_file() and p.suffix.lower() in IMG_EXTS)
 
 
 def list_class_dirs(split_dir: Path) -> list[str]:
-    """Nombres de subcarpetas (IDs) presentes en un split."""
+    """Names of subfolders (IDs) present in a split."""
     if not split_dir.is_dir():
         return []
     return sorted(p.name for p in split_dir.iterdir() if p.is_dir())
 
 
 def scan(cmpd_dir: Path) -> dict:
-    """Recorre los tres splits y devuelve, por split, {ID: [paths relativas]}."""
+    """Walk all three splits and return, per split, {ID: [relative paths]}."""
     per_split: dict[str, dict[str, list[str]]] = {}
     for split in SPLITS:
         split_dir = cmpd_dir / split
@@ -72,7 +72,7 @@ def stats(by_class: dict[str, list[str]]) -> dict:
 
 
 def check_corrupt(cmpd_dir: Path, per_split: dict, log) -> list[str]:
-    """Intenta abrir cada imagen; devuelve las rutas ilegibles."""
+    """Try to open each image; return unreadable paths."""
     from PIL import Image
     bad: list[str] = []
     total = 0
@@ -85,28 +85,28 @@ def check_corrupt(cmpd_dir: Path, per_split: dict, log) -> list[str]:
                         im.convert("RGB").load()
                 except Exception as e:  # noqa: BLE001
                     bad.append(rel)
-                    log.warning(f"corrupta: {rel} ({e})")
-    log.info(f"chequeadas {total} imágenes | corruptas: {len(bad)}")
+                    log.warning(f"corrupt: {rel} ({e})")
+    log.info(f"checked {total} images | corrupt: {len(bad)}")
     return bad
 
 
 def build_label_map(per_split: dict, log) -> dict[str, int]:
-    """carpeta→entero 0..N-1, por clases PRESENTES en train (canónico)."""
+    """folder→integer 0..N-1, for classes PRESENT in train (canonical)."""
     train_ids = set(per_split["train"].keys())
     all_ids = set().union(*(set(per_split[s].keys()) for s in SPLITS))
 
-    # toda clase de val/test debería estar en train (si no, no se puede aprender)
+    # every class in val/test should be in train (otherwise cannot be learned)
     not_in_train = sorted(all_ids - train_ids)
     if not_in_train:
-        log.warning(f"⚠ {len(not_in_train)} clases en val/test NO están en train "
-                    f"(no se podrían aprender): {not_in_train}")
+        log.warning(f"⚠ {len(not_in_train)} classes in val/test are NOT in train "
+                    f"(cannot be learned): {not_in_train}")
 
-    classes = sorted(train_ids)  # numeración por carpetas presentes en train
+    classes = sorted(train_ids)  # numbered by folders present in train
     return {cls: i for i, cls in enumerate(classes)}
 
 
 def to_entries(by_class: dict[str, list[str]], label_map: dict[str, int]) -> list[dict]:
-    """{ID: [paths]} → [{'path','label'}], saltando clases sin label (no en train)."""
+    """{ID: [paths]} → [{'path','label'}], skipping classes without a label (not in train)."""
     entries: list[dict] = []
     for cls, rels in sorted(by_class.items()):
         if cls not in label_map:
@@ -117,39 +117,39 @@ def to_entries(by_class: dict[str, list[str]], label_map: dict[str, int]) -> lis
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Inspección + splits de CMPD300.")
+    ap = argparse.ArgumentParser(description="CMPD300 inspection + split generation.")
     ap.add_argument("--check-corrupt", action="store_true",
-                    help="verificar que cada imagen se pueda abrir (más lento).")
+                    help="verify that each image can be opened (slower).")
     ap.add_argument("--no-write", action="store_true",
-                    help="solo reportar, no escribir JSON.")
+                    help="report only, do not write JSON files.")
     args = ap.parse_args()
 
     log = get_logger("inspect.cmpd300")
     cmpd_dir = config.CMPD300_DIR
-    log.info(f"CMPD300_DIR: {cmpd_dir}  (existe: {cmpd_dir.is_dir()})")
+    log.info(f"CMPD300_DIR: {cmpd_dir}  (exists: {cmpd_dir.is_dir()})")
     if not (cmpd_dir / "train").is_dir():
-        log.error("No encuentro <CMPD300_DIR>/train. Revisá config.CMPD300_DIR "
-                  "o seteá CMPD300_DATA_DIR.")
+        log.error("Cannot find <CMPD300_DIR>/train. Check config.CMPD300_DIR "
+                  "or set CMPD300_DATA_DIR.")
         sys.exit(1)
 
     per_split = scan(cmpd_dir)
 
-    # ---- Reporte por split ----
+    # ---- Per-split report ----
     report: dict = {"cmpd300_dir": str(cmpd_dir), "splits": {}}
     for split in SPLITS:
         s = stats(per_split[split])
         report["splits"][split] = s
-        log.info(f"[{split:5s}] clases={s['n_classes']:4d} imgs={s['n_images']:5d} "
+        log.info(f"[{split:5s}] classes={s['n_classes']:4d} imgs={s['n_images']:5d} "
                  f"min={s['min_per_class']} max={s['max_per_class']} "
-                 f"media={s['mean_per_class']}")
+                 f"mean={s['mean_per_class']}")
 
-    # ---- Clases faltantes entre splits ----
+    # ---- Missing classes across splits ----
     train_ids = set(per_split["train"].keys())
     for split in ("val", "test"):
         missing = sorted(train_ids - set(per_split[split].keys()))
         report["splits"][split]["missing_vs_train"] = missing
         if missing:
-            log.warning(f"[{split}] le faltan {len(missing)} IDs que sí están en train: "
+            log.warning(f"[{split}] missing {len(missing)} IDs that are in train: "
                         f"{missing}")
 
     # ---- label_map + num_classes ----
@@ -158,29 +158,29 @@ def main() -> None:
     report["num_classes"] = num_classes
     total_imgs = sum(report["splits"][s]["n_images"] for s in SPLITS)
     report["total_images"] = total_imgs
-    log.info(f"=> num_classes (carpetas en train) = {num_classes} | "
-             f"total imágenes = {total_imgs}")
+    log.info(f"=> num_classes (folders in train) = {num_classes} | "
+             f"total images = {total_imgs}")
 
-    # ---- Corruptas (opcional) ----
+    # ---- Corrupt check (optional) ----
     if args.check_corrupt:
         report["corrupt"] = check_corrupt(cmpd_dir, per_split, log)
 
-    # ---- Escribir splits + label_map + reporte ----
+    # ---- Write splits + label_map + report ----
     if not args.no_write:
         config.CMPD300_SPLITS_DIR.mkdir(parents=True, exist_ok=True)
         for split in SPLITS:
             entries = to_entries(per_split[split], label_map)
             save_json(entries, config.CMPD300_SPLITS_DIR / f"{split}.json")
-            log.info(f"escrito {split}.json ({len(entries)} entradas)")
+            log.info(f"wrote {split}.json ({len(entries)} entries)")
         save_json(label_map, config.CMPD300_SPLITS_DIR / "label_map.json")
         config.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
         save_json(report, config.RESULTS_DIR / "00_inspect_cmpd300.json")
-        log.info(f"label_map.json + reporte escritos en {config.CMPD300_SPLITS_DIR} "
-                 f"y {config.RESULTS_DIR}")
+        log.info(f"label_map.json + report written to {config.CMPD300_SPLITS_DIR} "
+                 f"and {config.RESULTS_DIR}")
     else:
-        log.info("--no-write: no se escribió nada.")
+        log.info("--no-write: nothing written.")
 
-    log.info("OK.")
+    log.info("Done.")
 
 
 if __name__ == "__main__":
