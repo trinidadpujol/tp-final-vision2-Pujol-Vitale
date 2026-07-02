@@ -1,27 +1,27 @@
-"""04_precompute_aug.py — Precomputa las imágenes sintéticas (augmentation) a disco.
+"""04_precompute_aug.py — Precompute synthetic (augmented) images to disk.
 
-PAPER: la data augmentation es un PASO DE PREPROCESAMIENTO que "crea imágenes sintéticas
-y agranda el dataset". Acá las generamos UNA vez y las guardamos como archivos, en vez de
-re-aumentar online en cada época. Ventajas: el conjunto sintético queda FIJO (fiel al
-paper), reproducible e inspeccionable (podés abrir las .jpg y verlas).
+PAPER: data augmentation is a PRE-PROCESSING STEP that "creates synthetic images
+and enlarges the dataset". Here we generate them ONCE and save them as files,
+instead of re-augmenting online every epoch. Advantages: the synthetic set is FIXED
+(faithful to the paper), reproducible and inspectable (you can open the .jpg files).
 
-Por clase se agregan `max(0, min(AUG_TARGET_CAP, AUG_FACTOR*N_i) - N_i)` copias,
-muestreando con reemplazo de las imágenes de esa clase (seed fijo) y aplicando
-flip / brillo (0.2–0.5) / rotación (±15°) / blur. Mismo criterio que el path online
-(`dataset.build_augmented_entries`), solo que acá queda materializado.
+Per class we add `max(0, min(AUG_TARGET_CAP, AUG_FACTOR*N_i) - N_i)` copies,
+sampling with replacement from that class's images (fixed seed) and applying
+flip / brightness (0.2–0.5) / rotation (±15°) / blur. Same criterion as the online
+path (`dataset.build_augmented_entries`), only here it is materialized on disk.
 
-Salida (en OUTPUT/aug_cache/):
-  <class_name>/<orig_stem>__aug<k>.jpg   # imágenes sintéticas (300x300)
-  aug_manifest.json                      # [{"path", "label"}] relativo a aug_cache/
+Output (in OUTPUT/aug_cache/):
+  <class_name>/<orig_stem>__aug<k>.jpg   # synthetic images (300x300)
+  aug_manifest.json                      # [{"path", "label"}] relative to aug_cache/
 
-El entrenamiento usa este cache automáticamente si existe (ver dataset.make_train_loader).
+Training uses this cache automatically when it exists (see dataset.make_train_loader).
 
-NOTA: NO acelera el entrenamiento (el cuello de botella es el forward en GPU, que procesa
-la misma cantidad de imágenes). Sirve para fijar y reproducir el set sintético.
+NOTE: does NOT speed up training (the bottleneck is the GPU forward pass, which
+processes the same number of images). Serves to fix and reproduce the synthetic set.
 
-Uso:
-    python scripts/04_precompute_aug.py            # genera si no existe
-    python scripts/04_precompute_aug.py --force    # regenera
+Usage:
+    python scripts/04_precompute_aug.py            # generate if cache does not exist
+    python scripts/04_precompute_aug.py --force    # regenerate
 """
 from __future__ import annotations
 
@@ -44,8 +44,8 @@ from src.utils import get_logger, load_json, save_json  # noqa: E402
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=config.SPLIT_SEED,
-                    help="Semilla del muestreo + ops aleatorias (reproducibilidad).")
-    ap.add_argument("--force", action="store_true", help="Regenerar aunque ya exista.")
+                    help="Seed for sampling + random ops (reproducibility).")
+    ap.add_argument("--force", action="store_true", help="Regenerate even if cache exists.")
     args = ap.parse_args()
 
     log = get_logger("04_precompute_aug")
@@ -55,7 +55,8 @@ def main() -> int:
 
     if manifest_path.is_file() and not args.force:
         m = load_json(manifest_path)
-        log.info(f"Ya existe {manifest_path} ({len(m)} imágenes). Usar --force para regenerar.")
+        log.info(f"Cache already exists at {manifest_path} ({len(m)} images). "
+                 f"Use --force to regenerate.")
         return 0
 
     cache.mkdir(parents=True, exist_ok=True)
@@ -64,10 +65,10 @@ def main() -> int:
 
     train = load_split("train")
     extra = build_augmented_entries(train, seed=args.seed)
-    log.info(f"Generando {len(extra)} imágenes sintéticas en {cache} ...")
+    log.info(f"Generating {len(extra)} synthetic images in {cache} ...")
 
-    aug_tf = build_pil_aug_transform()  # PIL ops (resize + aug), sin ToTensor
-    # Determinismo de las ops aleatorias de torchvision (usan el RNG de torch) + del muestreo.
+    aug_tf = build_pil_aug_transform()  # PIL ops (resize + aug), without ToTensor
+    # Determinism for torchvision random ops (they use torch's RNG) + sampling.
     random.seed(args.seed)
     import torch
     torch.manual_seed(args.seed)
@@ -79,7 +80,7 @@ def main() -> int:
         cls = idx_to_name.get(label, f"label_{label}")
         stem = Path(e["path"]).stem
         img = Image.open(config.DATA_DIR / e["path"]).convert("RGB")
-        out_img = aug_tf(img)  # PIL 300x300 aumentada
+        out_img = aug_tf(img)  # PIL 300x300 augmented
 
         k = counters[(label, stem)]
         counters[(label, stem)] += 1
@@ -89,8 +90,8 @@ def main() -> int:
         manifest.append({"path": rel, "label": label})
 
     save_json(manifest, manifest_path)
-    log.info(f"Listo: {len(manifest)} imágenes sintéticas + manifest en {manifest_path}")
-    log.info("El entrenamiento las usará automáticamente (dataset.make_train_loader).")
+    log.info(f"Done: {len(manifest)} synthetic images + manifest at {manifest_path}")
+    log.info("Training will use them automatically (dataset.make_train_loader).")
     return 0
 
 

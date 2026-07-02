@@ -1,201 +1,265 @@
-# Plan de implementación — Replicación de identificación bovina por hocico
+# Implementation plan — Bovine identification by muzzle replication
 
-Spec para construir con Claude Code. Objetivo: **replicar los resultados de Li, Erickson & Xiong (2022)**, "Individual Beef Cattle Identification Using Muzzle Images and Deep Learning Techniques" (*Animals* 12(11):1453), sobre el dataset Zenodo Muzzle DB. Este es el requisito base del TP (replicar un paper publicado de ID bovina por hocico). Las fases posteriores (cross-dataset + domain adaptation) se construyen sobre esto.
-
----
-
-## 0. Contexto y objetivo
-
-- **Tarea:** clasificación de conjunto cerrado. 268 vacas = 268 clases. Dada una imagen de hocico, predecir a qué individuo pertenece.
-- **Dataset:** 4923 imágenes de hocico de 268 vacas de feedlot (EE.UU.), ya descargado localmente.
-- **Resultado a igualar:** mejor accuracy del paper = **98.7%** (modelo VGG16_BN con cross-entropy + data augmentation). El segundo mejor estable fue VGG19_BN con weighted cross-entropy.
-- **Criterio de éxito de la replicación:** accuracy en test en el rango **~96–98%+**. Igualar 98.7% al decimal es improbable por la aleatoriedad del reshuffle; caer en ese rango y **reproducir la tendencia** (que weighted CE y data augmentation ayudan a las clases con pocas imágenes) cuenta como replicación válida.
-
-> Nota importante: el paper reporta que **VGG16_BN es el mejor, no ResNet-50**. Para replicar fielmente hay que usar VGG16_BN. Igual entrenamos también ResNet-50 porque es el backbone que vamos a reutilizar en las fases de domain adaptation.
+Spec for building with Claude Code. Goal: **replicate the results of Li, Erickson & Xiong (2022)**,
+"Individual Beef Cattle Identification Using Muzzle Images and Deep Learning Techniques"
+(*Animals* 12(11):1453), on the Zenodo Muzzle DB dataset. This is the baseline requirement of the
+project (replicate a published paper on bovine muzzle identification). Later phases
+(cross-dataset + domain adaptation) build on top of this.
 
 ---
 
-## 1. La receta exacta del paper (target, no improvisar)
+## 0. Context and goal
 
-| Componente | Valor del paper |
+- **Task:** closed-set classification. 268 cattle = 268 classes. Given a muzzle image, predict
+  which individual it belongs to.
+- **Dataset:** 4923 muzzle images of 268 feedlot cattle (USA), already downloaded locally.
+- **Result to match:** best paper accuracy = **98.7%** (VGG16_BN model with cross-entropy +
+  data augmentation). The second best stable model was VGG19_BN with weighted cross-entropy.
+- **Success criterion for the replication:** test accuracy in the range **~96–98%+**. Matching
+  98.7% to the decimal is unlikely due to the randomness of the reshuffle; landing in that range
+  and **reproducing the trend** (that weighted CE and data augmentation help classes with few
+  images) counts as a valid replication.
+
+> Important note: the paper reports that **VGG16_BN is the best model, not ResNet-50**. To
+> replicate faithfully we must use VGG16_BN. We also train ResNet-50 because it is the backbone
+> we will reuse in the domain adaptation phases.
+
+---
+
+## 1. The exact recipe from the paper (target, do not improvise)
+
+| Component | Paper value |
 |---|---|
-| Resolución de entrada | **300×300** px (NO 224×224) |
-| Normalización | intensidades por canal a rango **[0,1]** (dividir por 255). NO usa mean/std de ImageNet |
-| Split | **65% train / 15% val / 20% test**, aleatorio, reshuffle, **por imagen** (todas las 268 clases presentes en cada split) |
-| Transfer learning | preentrenado en ImageNet; **se fine-tunean SOLO las capas fully-connected** (backbone convolucional congelado) |
-| Épocas | 50 |
-| Optimizador | SGD, momentum 0.9 |
-| Learning rate | inicial 0.001, decaído por factor 0.1 cada 7 épocas (StepLR step_size=7, gamma=0.1) |
-| Loss base | Cross-Entropy |
-| Réplicas | 5 corridas con misma semilla → reportar **accuracy media en test** |
-| Métrica | top-1 accuracy global + por clase. Opcional: velocidad de procesamiento (ms/imagen) |
+| Input resolution | **300×300** px (NOT 224×224) |
+| Normalization | channel intensities to **[0,1]** (divide by 255). Does NOT use ImageNet mean/std |
+| Split | **65% train / 15% val / 20% test**, random, reshuffle, **per image** (all 268 classes present in each split) |
+| Transfer learning | pretrained on ImageNet; **fine-tune ONLY the fully-connected layers** (convolutional backbone frozen) |
+| Epochs | 50 |
+| Optimizer | SGD, momentum 0.9 |
+| Learning rate | initial 0.001, decayed by factor 0.1 every 7 epochs (StepLR step_size=7, gamma=0.1) |
+| Base loss | Cross-Entropy |
+| Replicates | 5 runs with the same seed → report **mean test accuracy** |
+| Metric | top-1 global accuracy + per-class accuracy. Optional: processing speed (ms/image) |
 
-**Desbalance de clases (importante):** las imágenes por animal van de **4 a 70**. Las 4 vacas con solo 4 imágenes (IDs 2100, 4549, 5355, 5925) son las que dan 0% sin optimización.
+**Class imbalance (important):** images per animal range from **4 to 70**. The 4 cattle with
+only 4 images (IDs 2100, 4549, 5355, 5925) are the ones that score 0% without optimization.
 
-**Optimización de desbalance (lo que sube de 98.4% a 98.7%):**
-- **Weighted Cross-Entropy (WCE):** peso por clase `w_i = N_max / N_i`, con `N_max = 70` (imágenes de la vaca con más muestras), `N_i` = imágenes de la clase i.
-- **Data augmentation** (solo en train): flip horizontal; brillo con factor entre 0.2 y 0.5; rotación aleatoria entre −15° y +15°; blur gaussiano con kernel entre 1 y 5.
+**Imbalance optimization (what boosts from 98.4% to 98.7%):**
+- **Weighted Cross-Entropy (WCE):** per-class weight `w_i = N_max / N_i`, with `N_max = 70`
+  (images of the most-sampled animal), `N_i` = images of class i.
+- **Data augmentation** (train only): horizontal flip; brightness factor between 0.2 and 0.5;
+  random rotation between −15° and +15°; Gaussian blur with kernel between 1 and 5.
 
-**Valores no especificados en el paper (decidir y documentar):**
-- Batch size: usar 32 (ajustar si la GPU se queda sin memoria con 300×300).
-- Semillas: fijar 5 semillas explícitas (p.ej. 0,1,2,3,4) para las réplicas.
+**Values not specified in the paper (decide and document):**
+- Batch size: use 32 (adjust if GPU runs out of memory with 300×300).
+- Seeds: fix 5 explicit seeds (e.g. 0,1,2,3,4) for the replicates.
 
 ---
 
-## 2. Estructura del proyecto a generar
+## 2. Project structure to generate
 
 ```
 cattle-reid/
-├── plan.md                  # este archivo
-├── README.md                # cómo correr cada fase
+├── plan.md                  # this file
+├── README.md                # how to run each phase
 ├── requirements.txt
-├── config.py                # rutas, hiperparámetros, semillas (single source of truth)
+├── config.py                # paths, hyperparameters, seeds (single source of truth)
 ├── data/
-│   └── (NO commitear el dataset; solo apuntar DATA_DIR desde config)
+│   └── (DO NOT commit the dataset; only point DATA_DIR from config)
 ├── src/
-│   ├── dataset.py           # Dataset + DataLoader, split estratificado
-│   ├── transforms.py        # preprocesamiento + data augmentation del paper
-│   ├── models.py            # builder de VGG16_BN y ResNet-50 (freeze backbone / full finetune)
-│   ├── losses.py            # CE y Weighted CE
-│   ├── train.py             # loop de entrenamiento + validación, 1 corrida
-│   ├── evaluate.py          # accuracy global y por clase en test
-│   └── utils.py             # seeds, logging, guardado de checkpoints/métricas
+│   ├── dataset.py           # Dataset + DataLoader, stratified split
+│   ├── transforms.py        # preprocessing + paper data augmentation
+│   ├── models.py            # VGG16_BN and ResNet-50 builder (freeze backbone / full finetune)
+│   ├── losses.py            # CE and Weighted CE
+│   ├── train.py             # training + validation loop, 1 run
+│   ├── evaluate.py          # global and per-class accuracy on test
+│   └── utils.py             # seeds, logging, checkpoint/metric saving
 ├── scripts/
-│   ├── 00_inspect_data.py   # verifica estructura del dataset y reporta stats
-│   ├── 01_make_splits.py    # genera y guarda los splits (json con paths+labels)
-│   ├── 02_train_vgg.py      # replicación: VGG16_BN, 5 réplicas, 3 variantes
-│   └── 03_train_resnet.py   # backbone propio: ResNet-50
+│   ├── 00_inspect_data.py   # verifies dataset structure and reports stats
+│   ├── 01_make_splits.py    # generates and saves splits (json with paths+labels)
+│   ├── 02_train_vgg.py      # replication: VGG16_BN, 5 replicates, 3 variants
+│   └── 03_train_resnet.py   # own backbone: ResNet-50
 ├── outputs/
-│   ├── splits/              # splits guardados (reproducibilidad)
-│   ├── checkpoints/         # pesos guardados
-│   └── results/             # csv/json de métricas + tabla resumen
+│   ├── splits/              # saved splits (reproducibility)
+│   ├── checkpoints/         # saved weights
+│   └── results/             # csv/json metrics + summary table
 └── notebooks/
-    └── colab_runner.ipynb   # wrapper para correr en Colab/Kaggle con GPU
+    └── colab_runner.ipynb   # wrapper to run on Colab/Kaggle with GPU
 ```
 
 ---
 
-## 3. Tareas por fase
+## 3. Tasks by phase
 
-### Fase 0 — Inspección de datos (`scripts/00_inspect_data.py`)
-**Antes de escribir nada de entrenamiento.** El dataset ya está descargado pero hay que confirmar su estructura real.
-1. Recibir `DATA_DIR` desde `config.py`.
-2. Listar subcarpetas; confirmar que hay ~268 carpetas (una por animal).
-3. Contar imágenes por carpeta. Reportar: nº de clases, total de imágenes (esperado ~4923), min/max/media de imágenes por clase, histograma simple.
-4. Verificar que el min sea 4 y el max 70 (sanity check contra el paper).
-5. Detectar extensiones de imagen presentes (.jpg/.png), imágenes corruptas o ilegibles.
-6. Imprimir un reporte. **No avanzar a Fase 1 hasta que el reporte cuadre.** Si la estructura difiere (p.ej. un solo nivel de carpetas, o un csv de labels), adaptar `dataset.py` en consecuencia.
+### Phase 0 — Data inspection (`scripts/00_inspect_data.py`)
+**Before writing any training code.** The dataset is already downloaded but we must confirm
+its real structure.
+1. Receive `DATA_DIR` from `config.py`.
+2. List subdirectories; confirm there are ~268 folders (one per animal).
+3. Count images per folder. Report: number of classes, total images (expected ~4923), min/max/mean
+   images per class, simple histogram.
+4. Verify that min is 4 and max is 70 (sanity check against the paper).
+5. Detect image extensions present (.jpg/.png), corrupt or unreadable images.
+6. Print a report. **Do not advance to Phase 1 until the report is correct.** If the structure
+   differs (e.g. a single folder level, or a csv of labels), adapt `dataset.py` accordingly.
 
-### Fase 1 — Dataset, splits y transforms (`dataset.py`, `transforms.py`, `01_make_splits.py`)
-1. **Split estratificado por imagen** 65/15/20 con semilla fija. Estratificar por clase para que cada una de las 268 aparezca en train, val y test. Guardar los splits como JSON (lista de `(path, label)`) en `outputs/splits/` para reproducibilidad — **no re-splitear en cada corrida**.
-2. `LabelEncoder` carpeta→entero 0..267; guardar el mapeo.
-3. **Transforms base (val/test):** resize 300×300 → ToTensor (esto ya escala a [0,1]). **No** aplicar normalización ImageNet (el paper usa [0,1] crudo). Dejar la opción de normalización ImageNet como flag configurable para experimentar después.
-4. **Transforms de train (data augmentation, variante con aug):** resize 300×300 + RandomHorizontalFlip + ColorJitter(brightness=(0.2,0.5)) + RandomRotation(15) + GaussianBlur(kernel ∈ {1,3,5}) → ToTensor.
-5. `Dataset` de PyTorch que lea desde los JSON de split. `DataLoader` con `num_workers` configurable.
+### Phase 1 — Dataset, splits, and transforms (`dataset.py`, `transforms.py`, `01_make_splits.py`)
+1. **Stratified per-image split** 65/15/20 with a fixed seed. Stratify by class so that all 268
+   appear in train, val, and test. Save splits as JSON (list of `(path, label)`) in
+   `outputs/splits/` for reproducibility — **do not re-split per run**.
+2. `LabelEncoder` folder→integer 0..267; save the mapping.
+3. **Base transforms (val/test):** resize 300×300 → ToTensor (this already scales to [0,1]).
+   **Do not** apply ImageNet normalization (the paper uses raw [0,1]). Leave ImageNet
+   normalization as a configurable flag for later experiments.
+4. **Train transforms (data augmentation variant):** resize 300×300 + RandomHorizontalFlip +
+   ColorJitter(brightness=(0.2,0.5)) + RandomRotation(15) + GaussianBlur(kernel ∈ {1,3,5})
+   → ToTensor.
+5. PyTorch `Dataset` reading from split JSONs. `DataLoader` with configurable `num_workers`.
 
-### Fase 2 — Modelos y losses (`models.py`, `losses.py`)
+### Phase 2 — Models and losses (`models.py`, `losses.py`)
 1. `build_model(name, num_classes=268, freeze_backbone=True)`:
-   - `vgg16_bn`: cargar `torchvision.models.vgg16_bn(weights=IMAGENET)`, reemplazar la última capa del clasificador por `Linear(..., 268)`. Si `freeze_backbone`, congelar `features` y entrenar solo `classifier`.
-   - `resnet50`: cargar preentrenado, reemplazar `fc` por `Linear(2048, 268)`. Soportar `freeze_backbone=True` (solo fc) y `False` (fine-tune completo).
+   - `vgg16_bn`: load `torchvision.models.vgg16_bn(weights=IMAGENET)`, replace the last
+     classifier layer with `Linear(..., 268)`. If `freeze_backbone`, freeze `features` and train
+     only `classifier`.
+   - `resnet50`: load pretrained, replace `fc` with `Linear(2048, 268)`. Support
+     `freeze_backbone=True` (FC only) and `False` (full fine-tune).
 2. `losses.py`:
-   - CE estándar.
-   - **Weighted CE:** calcular pesos `w_i = 70 / N_i` desde los conteos del split de train; pasar a `nn.CrossEntropyLoss(weight=...)`.
+   - Standard CE.
+   - **Weighted CE:** compute weights `w_i = 70 / N_i` from train split counts; pass to
+     `nn.CrossEntropyLoss(weight=...)`.
 
-### Fase 3 — Entrenamiento y evaluación (`train.py`, `evaluate.py`, `02_train_vgg.py`)
-1. `train.py`: loop estándar — SGD(momentum=0.9, lr=0.001), StepLR(step=7, gamma=0.1), 50 épocas, trackear val accuracy por época, guardar el mejor checkpoint por val acc.
-2. `evaluate.py`: cargar mejor checkpoint, calcular **top-1 accuracy global** y **accuracy por clase** en test. Guardar a CSV. (Opcional: ms/imagen.)
-3. `02_train_vgg.py` corre la **replicación completa**:
-   - Modelo VGG16_BN, `freeze_backbone=True`.
-   - **3 variantes** × **5 semillas**:
-     - (a) CE sola, sin augmentation
+### Phase 3 — Training and evaluation (`train.py`, `evaluate.py`, `02_train_vgg.py`)
+1. `train.py`: standard loop — SGD(momentum=0.9, lr=0.001), StepLR(step=7, gamma=0.1), 50
+   epochs, track val accuracy per epoch, save best checkpoint by val acc.
+2. `evaluate.py`: load best checkpoint, compute **top-1 global accuracy** and **per-class
+   accuracy** on test. Save to CSV. (Optional: ms/image.)
+3. `02_train_vgg.py` runs the **full replication**:
+   - Model VGG16_BN, `freeze_backbone=True`.
+   - **3 variants** × **5 seeds**:
+     - (a) CE alone, no augmentation
      - (b) CE + data augmentation
-     - (c) Weighted CE (sin augmentation)
-   - Reportar accuracy media ± std en test por variante.
-   - **Validación de éxito:** la mejor variante debe caer ~96–98%+, y (b)/(c) deben mejorar la accuracy de las clases con pocas imágenes vs (a). Generar una tabla resumen en `outputs/results/`.
+     - (c) Weighted CE (no augmentation)
+   - Report mean ± std test accuracy per variant.
+   - **Success validation:** the best variant must fall ~96–98%+, and (b)/(c) must improve the
+     accuracy of classes with few images vs (a). Generate a summary table in `outputs/results/`.
 
-### Fase 4 — Backbone propio ResNet-50 (`03_train_resnet.py`)
-1. Misma receta, modelo ResNet-50.
-2. Correr **dos modos**: `freeze_backbone=True` (como el paper) y `freeze_backbone=False` (fine-tune completo).
-3. Guardar los pesos de la mejor corrida en `outputs/checkpoints/` — **este es el modelo que se reutiliza en domain adaptation**.
-4. Reportar su accuracy. No se espera que iguale exactamente a VGG16_BN.
-
----
-
-## 4. Gotchas (verificar explícitamente)
-
-- **Split por imagen, NO por animal.** En clasificación closed-set las 268 clases deben estar en train/val/test. Nunca dejar un animal solo en test (rompería la tarea). El split por-animal/disjunto recién aplica en la fase futura de re-identificación.
-- **Normalización [0,1], no ImageNet.** El paper escala a [0,1] crudo. `ToTensor` ya hace eso. Si se agrega `Normalize(mean,std)` de ImageNet se obtienen números distintos a los del paper. Dejarlo como flag, default off.
-- **Backbone congelado.** El paper entrena solo las FC. Si se descongela todo, el resultado no es comparable con el reportado. Para la replicación: `freeze_backbone=True`.
-- **Las 4 clases con 4 imágenes.** Si la accuracy global da bien pero más baja que el paper, revisar la accuracy por clase de los IDs 2100/4549/5355/5925 — probablemente sean ellas las que tiran el promedio.
-- **Memoria GPU con 300×300 + VGG16_BN.** VGG es pesado en VRAM. Si hay OOM, bajar batch size antes de tocar la resolución (la resolución es parte de la receta).
-- **Reproducibilidad.** Fijar seeds de `random`, `numpy`, `torch` y `torch.cuda` en `utils.py`. Guardar los splits a disco y reusarlos.
+### Phase 4 — Own backbone ResNet-50 (`03_train_resnet.py`)
+1. Same recipe, ResNet-50 model.
+2. Run **two modes**: `freeze_backbone=True` (as in the paper) and `freeze_backbone=False`
+   (full fine-tune).
+3. Save the best run weights in `outputs/checkpoints/` — **this is the model reused in
+   domain adaptation**.
+4. Report its accuracy. Not expected to exactly match VGG16_BN.
 
 ---
 
-## 5. Entorno de ejecución: Kaggle Notebooks
+## 4. Gotchas (verify explicitly)
 
-**Plataforma elegida: Kaggle.** GPU gratis (P100 o T4×2), 30 hs/semana, sin setup de drivers ni de cuotas, sin colas de disponibilidad. La P100 es la misma GPU que usó el paper. (Google Cloud queda reservado para la fase futura de domain adaptation.)
+- **Split per image, NOT per animal.** In closed-set classification all 268 classes must be in
+  train/val/test. Never leave an animal only in test (would break the task). The per-animal /
+  disjoint split only applies in the future re-identification phase.
+- **[0,1] normalization, not ImageNet.** The paper scales to raw [0,1]. `ToTensor` already does
+  this. Adding `Normalize(mean,std)` from ImageNet produces different numbers than the paper.
+  Leave it as a flag, default off.
+- **Frozen backbone.** The paper trains only the FC layers. If the full network is fine-tuned,
+  the result is not comparable with the paper. For replication: `freeze_backbone=True`.
+- **The 4 classes with 4 images.** If global accuracy looks good but lower than the paper,
+  check the per-class accuracy of IDs 2100/4549/5355/5925 — they are likely dragging down the
+  average.
+- **GPU memory with 300×300 + VGG16_BN.** VGG is heavy on VRAM. If OOM, reduce batch size
+  before changing resolution (resolution is part of the recipe).
+- **Reproducibility.** Fix seeds for `random`, `numpy`, `torch`, and `torch.cuda` in
+  `utils.py`. Save splits to disk and reuse them.
 
-### 5.1. Dependencias
-- Python 3.10+, PyTorch + torchvision, scikit-learn (split estratificado), Pillow, numpy, pandas, tqdm. La imagen de Kaggle ya trae casi todo; instalar solo lo que falte.
-- Mantener un `requirements.txt` con versiones fijadas para reproducibilidad local, pero en Kaggle confiar en la imagen base + pip puntual.
+---
 
-### 5.2. Subir el dataset a Kaggle
-El dataset (~643 MB) ya está descargado localmente. Subirlo como **Kaggle Dataset privado** (Create → New Dataset → subir el .zip o la carpeta). Una vez creado, se adjunta al notebook con "Add Input" y queda montado en modo **solo lectura** en:
+## 5. Execution environment: Kaggle Notebooks
+
+**Chosen platform: Kaggle.** Free GPU (P100 or T4×2), 30 h/week, no driver setup or
+availability queues. The P100 is the same GPU used in the paper.
+(Google Cloud is reserved for the future domain adaptation phase.)
+
+### 5.1. Dependencies
+- Python 3.10+, PyTorch + torchvision, scikit-learn (stratified split), Pillow, numpy, pandas,
+  tqdm. The Kaggle image already includes most of these; only install what is missing.
+- Maintain a `requirements.txt` with pinned versions for local reproducibility, but on Kaggle
+  rely on the base image + targeted pip installs.
+
+### 5.2. Upload the dataset to Kaggle
+The dataset (~643 MB) is already downloaded locally. Upload it as a **private Kaggle Dataset**
+(Create → New Dataset → upload the .zip or folder). Once created, attach it to the notebook
+with "Add Input" and it will be mounted read-only at:
 ```
-/kaggle/input/<slug-del-dataset>/
+/kaggle/input/<dataset-slug>/
 ```
-Confirmar la estructura real ahí dentro en la Fase 0 (puede haber una carpeta extra de nivel superior según cómo se haya zippeado).
+Confirm the real structure inside in Phase 0 (there may be an extra top-level folder depending
+on how it was zipped).
 
-### 5.3. Subir el código
-Dos opciones, en orden de preferencia:
-1. **Repo en GitHub** → en el notebook, con internet activado, `git clone`. Es lo más limpio para iterar y versionar.
-2. Subir `src/` como un **Kaggle Dataset de tipo "utility script"** y adjuntarlo.
+### 5.3. Upload the code
+Two options, in order of preference:
+1. **GitHub repo** → in the notebook, with internet enabled, `git clone`. Cleanest for iteration
+   and versioning.
+2. Upload `src/` as a **Kaggle Dataset of type "utility script"** and attach it.
 
-### 5.4. Configuración del notebook
-- **Accelerator:** Settings → Accelerator → **GPU P100** (o T4×2; para entrenar un modelo a la vez alcanza con una sola GPU, no complicar con multi-GPU).
-- **Internet: ON.** Necesario para `git clone`, `pip install` y —clave— para que **torchvision descargue los pesos preentrenados de ImageNet** la primera vez. Requiere cuenta de Kaggle verificada por teléfono.
+### 5.4. Notebook configuration
+- **Accelerator:** Settings → Accelerator → **GPU P100** (or T4×2; for training one model at
+  a time a single GPU is enough, no need to complicate with multi-GPU).
+- **Internet: ON.** Needed for `git clone`, `pip install`, and — critically — for **torchvision
+  to download ImageNet pretrained weights** the first time. Requires a phone-verified Kaggle
+  account.
 
-### 5.5. Rutas (mapear en `config.py`)
+### 5.5. Paths (map in `config.py`)
 ```
-DATA_DIR   = /kaggle/input/<slug-del-dataset>/...   # solo lectura
-OUTPUT_DIR = /kaggle/working/outputs                # escritura + persiste al guardar versión
+DATA_DIR   = /kaggle/input/<dataset-slug>/...   # read-only
+OUTPUT_DIR = /kaggle/working/outputs            # writable + persists when saving a version
 ```
-Importante: **`/kaggle/working/` es el único directorio escribible que persiste** (hasta 20 GB, se guarda al hacer "Save Version"). Todos los checkpoints, splits y resultados van ahí. Cualquier cosa fuera de `/kaggle/working/` se pierde al cerrar la sesión.
+Important: **`/kaggle/working/` is the only writable directory that persists** (up to 20 GB,
+saved when doing "Save Version"). All checkpoints, splits, and results go there. Anything
+outside `/kaggle/working/` is lost when the session ends.
 
-### 5.6. Límites de sesión (planificar el sweep en función de esto)
-- Sesión interactiva: se corta a las ~12 h; idle timeout ~20–40 min (la sesión muere si no hay actividad).
-- Ejecución en background ("Save & Run All" / commit): corre hasta ~12 h sin que tengas que estar conectado. **Usar este modo para el sweep largo** (3 variantes × 5 semillas).
-- Cuota: **30 h de GPU por semana**.
-- El presupuesto alcanza de sobra: con `freeze_backbone=True` solo se entrena la cabeza FC, así que cada corrida es rápida. Aun así, **validar primero el pipeline con 1 sola semilla y pocas épocas**, y recién después lanzar el sweep completo en background. No quemar la cuota debuggeando.
+### 5.6. Session limits (plan the sweep accordingly)
+- Interactive session: cuts off at ~12 h; idle timeout ~20–40 min (session dies if no activity).
+- Background execution ("Save & Run All" / commit): runs up to ~12 h without needing to stay
+  connected. **Use this mode for the long sweep** (3 variants × 5 seeds).
+- Quota: **30 GPU hours per week**.
+- The budget is more than enough: with `freeze_backbone=True` only the FC head is trained, so
+  each run is fast. Still, **validate the pipeline with 1 seed and few epochs first**, then
+  launch the full sweep in background. Do not burn quota while debugging.
 
-### 5.7. Checklist de arranque en el notebook
-1. `nvidia-smi` → confirmar la GPU.
-2. `python -c "import torch; print(torch.cuda.is_available())"` → debe dar `True`.
-3. `git clone` del repo (o adjuntar el dataset de código).
-4. Setear `DATA_DIR` al path de `/kaggle/input/...` y correr `scripts/00_inspect_data.py`.
-5. Verificar que el reporte cuadre (268 clases, ~4923 imágenes, min 4 / max 70) antes de entrenar.
+### 5.7. Startup checklist in the notebook
+1. `nvidia-smi` → confirm the GPU.
+2. `python -c "import torch; print(torch.cuda.is_available())"` → must print `True`.
+3. `git clone` the repo (or attach the code dataset).
+4. Set `DATA_DIR` to the `/kaggle/input/...` path and run `scripts/00_inspect_data.py`.
+5. Verify that the report matches (268 classes, ~4923 images, min 4 / max 70) before training.
 
 ---
 
-## 6. Entregable de esta etapa
+## 6. Deliverable for this stage
 
-1. Pipeline reproducible que, apuntando a `DATA_DIR` (montado en `/kaggle/input/...`), corre Fase 0→4 de punta a punta en un notebook de Kaggle con GPU.
-2. Tabla resumen en `outputs/results/` con accuracy media ± std por variante (VGG16_BN: CE / CE+aug / WCE) y de ResNet-50.
-3. Checkpoint de ResNet-50 guardado para reutilizar.
-4. README con instrucciones de ejecución.
-
----
-
-## 7. Fases futuras (fuera de alcance ahora, dejar el código preparado)
-
-No implementar todavía, pero diseñar `models.py` y `dataset.py` para que extiendan a:
-- **Extractor de embeddings:** tomar el backbone ResNet-50 entrenado, quitar la cabeza de clasificación, exponer embeddings.
-- **Protocolo gallery/probe** con identidades disjuntas, métricas Rank-1 y mAP, para evaluación cross-dataset (Pakistán/Ahmed, etc.).
-- **Domain adaptation:** DANN con Gradient Reversal Layer, y self-training con pseudo-labels por clustering.
+1. Reproducible pipeline that, pointing at `DATA_DIR` (mounted at `/kaggle/input/...`), runs
+   Phases 0→4 end-to-end in a Kaggle GPU notebook.
+2. Summary table in `outputs/results/` with mean ± std accuracy per variant (VGG16_BN:
+   CE / CE+aug / WCE) and for ResNet-50.
+3. ResNet-50 checkpoint saved for reuse.
+4. README with execution instructions.
 
 ---
 
-## Referencia
+## 7. Future phases (out of scope now, design the code to accommodate them)
 
-Li, G.; Erickson, G.E.; Xiong, Y. (2022). *Individual Beef Cattle Identification Using Muzzle Images and Deep Learning Techniques.* Animals 12(11):1453. DOI: 10.3390/ani12111453. Dataset: Zenodo record 6324361.
+Do not implement yet, but design `models.py` and `dataset.py` to extend to:
+- **Embedding extractor:** take the trained ResNet-50 backbone, strip the classification head,
+  expose embeddings.
+- **Gallery/probe protocol** with disjoint identities, Rank-1 and mAP metrics, for cross-dataset
+  evaluation (Pakistan/Ahmed, etc.).
+- **Domain adaptation:** DANN with Gradient Reversal Layer, and self-training with pseudo-labels
+  via clustering.
+
+---
+
+## Reference
+
+Li, G.; Erickson, G.E.; Xiong, Y. (2022). *Individual Beef Cattle Identification Using
+Muzzle Images and Deep Learning Techniques.* Animals 12(11):1453.
+DOI: 10.3390/ani12111453. Dataset: Zenodo record 6324361.

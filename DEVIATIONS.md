@@ -1,129 +1,127 @@
-# DEVIATIONS.md — Desviaciones respecto del paper
+# DEVIATIONS.md — Deviations from the paper
 
-Este archivo registra **toda** diferencia entre lo que hacemos nosotros y la receta
-del paper de referencia:
+This file records **every** difference between our implementation and the recipe of the
+reference paper:
 
 > Li, G.; Erickson, G.E.; Xiong, Y. (2022). *Individual Beef Cattle Identification
 > Using Muzzle Images and Deep Learning Techniques.* Animals 12(11):1453.
 
-La replicación se evalúa por **fidelidad**, no solo por el número. Separar claramente
-"lo que dice el paper" de "lo que decidimos nosotros".
+The replication is evaluated by **fidelity**, not just by the number. We keep a clear
+separation between "what the paper says" and "what we decided."
 
 ---
 
-## Estado: el dataset coincide con el paper
+## Status: dataset matches the paper
 
-Verificado en Fase 0 (`scripts/00_inspect_data.py`, conteo por archivos sobre las
-4923 imágenes reales):
+Verified in Phase 0 (`scripts/00_inspect_data.py`, file-based count over all 4923 images):
 
-| | Paper | Real (medido) |
+| | Paper | Measured |
 |---|---|---|
-| Nº de clases | 268 | 268 ✓ |
-| Total imágenes | 4923 | 4923 ✓ |
-| Min imágenes/clase | 4 | 4 ✓ |
-| Max imágenes/clase | 70 | 70 ✓ |
-| Media | — | 18.4 |
+| Number of classes | 268 | 268 ✓ |
+| Total images | 4923 | 4923 ✓ |
+| Min images/class | 4 | 4 ✓ |
+| Max images/class | 70 | 70 ✓ |
+| Mean | — | 18.4 |
 
-**No hay desviación en los datos.** La receta del paper (`N_max=70`, distribución
-4–70) aplica tal cual.
-
----
-
-## D1 — Aclaración: hay 8 clases con 4 imágenes (no 4)
-
-**Paper:** menciona "las 4 vacas con solo 4 imágenes (IDs 2100, 4549, 5355, 5925)".
-
-**Real:** hay **8** clases con exactamente 4 imágenes:
-`2100, 3420, 4549, 5208, 5355, 5630, 5925, 8050`. Las 4 que nombra el paper son un
-subconjunto de estas.
-
-**Impacto:** ninguno sobre la receta. Solo importa al reportar accuracy por clase:
-revisar las **8**, no 4, como las candidatas a tirar el promedio. No es una
-desviación, es una corrección factual de la nota del paper.
+**No deviation in the data.** The paper's recipe (`N_max=70`, distribution 4–70) applies as-is.
 
 ---
 
-## D2 — Valores no especificados por el paper (decididos por nosotros)
+## D1 — Clarification: 8 classes have 4 images (not 4)
 
-No son desviaciones (el paper no los fija), pero se documentan para reproducibilidad:
+**Paper:** mentions "the 4 cows with only 4 images (IDs 2100, 4549, 5355, 5925)."
 
-- **Batch size:** 32 (bajar si hay OOM con 300×300 + VGG16_BN).
-- **Semillas de réplica:** plan original `(0, 1, 2, 3, 4)` = 5 corridas. **Usamos 3
-  semillas `(0, 1, 2)`** por el presupuesto de tiempo de la T4 (ver D3): VGG16_BN a
-  300×300 toma ~43 min/corrida medido → 3 var × 5 sem ≈ 10.7 h, no entra junto con ResNet
-  en el límite de 12 h de "Save & Run All". Con 3 var × 3 sem ≈ 7.5 h sí entra. Sigue
-  habiendo media ± std (3 muestras); el nº de réplicas fue decisión nuestra, no de la
-  receta del paper. **`config.REPLICATE_SEEDS = (0, 1, 2)`** es ahora el default, así
-  `02_train_vgg.py` sin `--seeds` ya entra en un solo commit.
-- **Semilla de split:** 42, fija; los splits se guardan a disco y se reusan.
-- **num_workers** del DataLoader: 4.
-- **Weighted CE `N_max`:** los pesos se calculan desde el split de **train** (sin
-  fuga): `N_i` = conteo en train, `N_max` = máximo de esos conteos (**≈46**, no 70,
-  porque train ≈65% de la clase de 70 imágenes). `N_max` es solo un factor de escala
-  global de la loss; el peso relativo entre clases (`N_max/N_i`) se preserva, que es
-  lo que importa. El paper usa el literal 70 (máximo del dataset completo). Override
-  disponible en `config.py` (`WCE_NMAX_OVERRIDE = 70`) para reproducir el valor exacto
-  del paper y comparar.
+**Actual:** there are **8** classes with exactly 4 images:
+`2100, 3420, 4549, 5208, 5355, 5630, 5925, 8050`. The 4 named in the paper are a
+subset of these.
+
+**Impact:** none on the recipe. Only matters when reporting per-class accuracy: check the
+**8** classes, not 4, as the candidates that drag down the average. This is not a deviation —
+it is a factual correction of the paper's footnote.
 
 ---
 
-## D3 — Hardware: T4 en vez de P100 (no afecta la receta)
+## D2 — Values not specified by the paper (decided by us)
 
-**Paper / plan:** GPU **P100** (la que usó el paper; `plan.md` §5 la prefería).
+These are not deviations (the paper does not fix them), but are documented for reproducibility:
 
-**Real:** la imagen actual de Kaggle trae un PyTorch compilado **sin soporte Pascal
-(sm_60)**, así que la P100 tira `CUDA error: no kernel image is available for execution`
-en el primer forward. Entrenamos en **GPU T4 ×2** (Turing, sm_75), que sí está en las
-capabilities soportadas por ese PyTorch (sm_70–sm_120). Se usa una sola T4 (`cuda:0`).
-
-**Impacto en resultados:** ninguno. Es solo el dispositivo de cómputo; la receta
-(resolución, normalización, optimizador, losses, épocas, seeds) no cambia. Puede variar
-levemente el tiempo por época y el redondeo numérico de bajo nivel, no la metodología.
+- **Batch size:** 32 (reduce if OOM with 300×300 + VGG16_BN).
+- **Replication seeds:** original plan `(0, 1, 2, 3, 4)` = 5 runs. **We use 3 seeds
+  `(0, 1, 2)`** due to T4 GPU budget (see D3): VGG16_BN at 300×300 takes ~43 min/run
+  → 3 variants × 5 seeds ≈ 10.7 h, which doesn't fit together with ResNet within the
+  12-hour "Save & Run All" limit. With 3 variants × 3 seeds ≈ 7.5 h it does. There is still
+  a mean ± std (3 samples); the number of replicates was our decision, not the paper's.
+  **`config.REPLICATE_SEEDS = (0, 1, 2)`** is now the default, so `02_train_vgg.py` without
+  `--seeds` fits in a single commit.
+- **Split seed:** 42, fixed; splits are saved to disk and reused.
+- **DataLoader num_workers:** 4.
+- **Weighted CE `N_max`:** weights are computed from the **train** split (no leakage):
+  `N_i` = count in train, `N_max` = maximum of those counts (**≈46**, not 70, because
+  train ≈65% of the class with 70 images). `N_max` is just a global scaling factor for
+  the loss; the relative weight between classes (`N_max/N_i`) is preserved, which is what
+  matters. The paper uses the literal 70 (maximum over the full dataset). Override available
+  in `config.py` (`WCE_NMAX_OVERRIDE = 70`) to reproduce the paper's exact value and compare.
 
 ---
 
-## D4 — Data augmentation ADITIVA (corrección hacia el método del paper)
+## D3 — Hardware: T4 instead of P100 (does not affect the recipe)
 
-**Brillo: NO hay desviación.** El paper dice textual: *"the brightness factor was set from
-0.2 to 0.5 (minimum = 0, maximum = 1)"*. O sea oscurece al 20–50% a propósito. Nuestro
-`ColorJitter(brightness=(0.2,0.5))` lo hace igual. El valor es fiel.
+**Paper / plan:** GPU **P100** (used by the paper; `plan.md` §5 preferred it).
 
-**Bug que tuvimos (y corregimos):** el paper describe la augmentation como *"a technique to
-create synthesized images and increase limited datasets"* → **crea imágenes sintéticas y
-AGRANDA el dataset, manteniendo los originales** (sobre todo para las clases con pocas
-imágenes). Nuestra primera versión usaba el augmentation online típico de PyTorch, que
-**REEMPLAZA** cada imagen por una versión aumentada en cada época. Con el brillo 0.2–0.5,
-eso dejaba TODO el train oscuro (medido: ~3.5× más oscuro que val/test) y el modelo nunca
-veía las imágenes a brillo real → mismatch sistemático train/test → la variante `ce_aug`
-**colapsó** (test ~0.20 vs ~0.96 de `ce`; train 0.83 / val 0.17).
+**Actual:** the current Kaggle image ships a PyTorch build **without Pascal (sm_60) support**,
+so the P100 raises `CUDA error: no kernel image is available for execution` on the first
+forward pass. We train on **GPU T4 ×2** (Turing, sm_75), which is within the supported
+capabilities of that PyTorch build (sm_70–sm_120). A single T4 (`cuda:0`) is used.
 
-**Fix (faithful):** augmentation **aditiva**. Se mantienen los originales con transform
-limpio (resize + ToTensor) y se **agregan** copias sintéticas aumentadas. Por clase se
-expande hasta `min(AUG_TARGET_CAP, AUG_FACTOR·N_i)` (= `min(20, 2·N_i)`): las clases con
-pocas imágenes se duplican o suben hasta 20, las de ≥20 no se tocan. Resultado: train
-**3187 → 4675 imgs (1.47×)**, 234/268 clases expandidas. Implementado en
+**Impact on results:** none. This only affects the compute device; the recipe
+(resolution, normalization, optimizer, losses, epochs, seeds) is unchanged. Low-level
+numerical rounding may differ very slightly, but the methodology does not.
+
+---
+
+## D4 — ADDITIVE data augmentation (correcting toward the paper's method)
+
+**Brightness: NO deviation.** The paper states textually: *"the brightness factor was set from
+0.2 to 0.5 (minimum = 0, maximum = 1)"*. That is, it intentionally darkens images to 20–50%.
+Our `ColorJitter(brightness=(0.2,0.5))` does the same. The value is faithful.
+
+**Bug we had (and fixed):** the paper describes augmentation as *"a technique to
+create synthesized images and increase limited datasets"* → **it creates synthetic images and
+ENLARGES the dataset, keeping the originals** (especially for classes with few images). Our
+first version used the standard PyTorch online augmentation, which **REPLACES** each image
+with an augmented version every epoch. With brightness 0.2–0.5, the entire training set was
+always dark (measured: ~3.5× darker than val/test) and the model never saw images at real
+brightness → systematic train/test mismatch → the `ce_aug` variant **collapsed**
+(test ~0.20 vs ~0.96 for `ce`; train 0.83 / val 0.17).
+
+**Fix (faithful):** **additive** augmentation. We keep the originals under a clean transform
+(resize + ToTensor) and **add** augmented synthetic copies. Per class, we expand up to
+`min(AUG_TARGET_CAP, AUG_FACTOR·N_i)` (= `min(20, 2·N_i)`): classes with few images are
+doubled or brought up to 20; classes with ≥20 images are left unchanged. Result: train
+**3187 → 4675 images (1.47×)**, 234/268 classes expanded. Implemented in
 `dataset.make_train_loader` / `build_augmented_entries`.
 
-Las copias sintéticas se **precomputan a disco** una vez (`scripts/04_precompute_aug.py`
-→ `outputs/aug_cache/`), igual que el paper la describe como *"preprocessing step"*: el
-conjunto sintético queda FIJO (no varía por época), reproducible e inspeccionable. Si el
-cache no existe (p.ej. smoke), se cae a augmentation online equivalente.
+Synthetic copies are **precomputed to disk once** (`scripts/04_precompute_aug.py`
+→ `outputs/aug_cache/`), consistent with the paper describing it as a *"preprocessing step"*:
+the synthetic set is FIXED (does not vary per epoch), reproducible, and inspectable.
+If the cache does not exist (e.g., smoke-test), the code falls back to equivalent online
+augmentation.
 
-**Qué es nuestro vs del paper:** el *método* (aditivo, expandir clases chicas) es del
-paper; el *multiplicador exacto* `min(20, 2·N_i)` es decisión nuestra (el paper no da el
-número de imágenes sintéticas por clase) — elegido para acotar el costo de cómputo en la
-T4. Override en `config.py` (`AUG_TARGET_CAP`, `AUG_FACTOR`).
-
----
-
-## D5 — (reservado)
-
-Anotar acá cualquier desviación futura (resolución, normalización, optimizador,
-descongelar backbone, etc.) con su justificación **antes** de aplicarla.
+**What is ours vs. the paper's:** the *method* (additive, expand small classes) is the paper's;
+the *exact multiplier* `min(20, 2·N_i)` is our decision (the paper does not give the number
+of synthetic images per class) — chosen to keep compute cost manageable on the T4.
+Override in `config.py` (`AUG_TARGET_CAP`, `AUG_FACTOR`).
 
 ---
 
-> Nota histórica: una primera inspección por `unzip -l | grep cattle_[0-9]+` reportó
-> erróneamente 8–140 (media 36.7). Causa: cada ruta contiene el ID dos veces
-> (`.../cattle_0100/cattle_0100_x.jpg`), duplicando el conteo. El conteo por archivos
-> es el válido y coincide con el paper.
+## D5 — (reserved)
+
+Record any future deviation here (resolution, normalization, optimizer,
+unfreezing backbone, etc.) with its justification **before** applying it.
+
+---
+
+> Historical note: an initial inspection using `unzip -l | grep cattle_[0-9]+` reported
+> 8–140 images (mean 36.7). Cause: each path contains the ID twice
+> (`.../cattle_0100/cattle_0100_x.jpg`), doubling the count. The file-based count is
+> the correct one and matches the paper.

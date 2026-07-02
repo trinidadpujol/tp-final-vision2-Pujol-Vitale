@@ -1,15 +1,15 @@
-"""00_inspect_data.py — Fase 0: inspección y validación del dataset.
+"""00_inspect_data.py — Phase 0: dataset inspection and validation.
 
-Correr SIEMPRE primero. Confirma la estructura real del dataset antes de escribir
-nada de entrenamiento. No avanzar a Fase 1 hasta que el reporte cuadre.
+ALWAYS run first. Confirms the real dataset structure before writing any training code.
+Do not advance to Phase 1 until the report is correct.
 
-Reporta: nº de clases, total de imágenes, min/max/media por clase, histograma,
-extensiones presentes, imágenes corruptas/ilegibles, y las clases más chicas.
-Compara contra los sanity checks de config.py (268 clases, 4923 imágenes, 8–140).
+Reports: number of classes, total images, min/max/mean per class, histogram,
+extensions present, corrupt/unreadable images, and the smallest classes.
+Compares against sanity checks in config.py (268 classes, 4923 images, 4–70 per class).
 
-Uso:
+Usage:
     python scripts/00_inspect_data.py
-    python scripts/00_inspect_data.py --check-corrupt   # abre cada imagen (lento)
+    python scripts/00_inspect_data.py --check-corrupt   # opens each image (slow)
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-# Permitir importar config.py y src/ corriendo desde la raíz del proyecto.
+# Allow importing config.py and src/ when running from the project root.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import config  # noqa: E402
@@ -28,12 +28,12 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
 
 
 def list_class_dirs(data_dir: Path) -> list[Path]:
-    """Subcarpetas que representan una clase (un animal)."""
+    """Subdirectories representing a class (one animal)."""
     return sorted([p for p in data_dir.iterdir() if p.is_dir()])
 
 
 def count_images(class_dirs: list[Path]) -> tuple[dict[str, int], Counter]:
-    """Devuelve {clase: nº imágenes} y un Counter de extensiones."""
+    """Return {class: image_count} and a Counter of extensions."""
     per_class: dict[str, int] = {}
     ext_counter: Counter = Counter()
     for d in class_dirs:
@@ -47,11 +47,11 @@ def count_images(class_dirs: list[Path]) -> tuple[dict[str, int], Counter]:
 
 
 def find_corrupt(class_dirs: list[Path]) -> list[str]:
-    """Intenta abrir y verificar cada imagen; devuelve rutas ilegibles."""
+    """Try to open and verify each image; return unreadable paths."""
     try:
         from PIL import Image
     except ImportError:
-        print("  (Pillow no instalado: salteo chequeo de corruptas)")
+        print("  (Pillow not installed: skipping corrupt check)")
         return []
     corrupt: list[str] = []
     for d in class_dirs:
@@ -66,7 +66,7 @@ def find_corrupt(class_dirs: list[Path]) -> list[str]:
 
 
 def histogram(per_class: dict[str, int], bins: int = 10) -> list[tuple[str, int]]:
-    """Histograma simple (ASCII) de imágenes por clase."""
+    """Simple ASCII histogram of images per class."""
     counts = list(per_class.values())
     lo, hi = min(counts), max(counts)
     width = max(1, (hi - lo) // bins + 1)
@@ -76,7 +76,7 @@ def histogram(per_class: dict[str, int], bins: int = 10) -> list[tuple[str, int]
         a, b = edges[i], edges[i + 1]
         c = sum(1 for v in counts if a <= v < b)
         hist.append((f"[{a:>3}-{b:>3})", c))
-    # incluir el borde superior
+    # include the upper edge
     hist.append((f"[{edges[-1]:>3}+   )", sum(1 for v in counts if v >= edges[-1])))
     return hist
 
@@ -84,7 +84,7 @@ def histogram(per_class: dict[str, int], bins: int = 10) -> list[tuple[str, int]
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--check-corrupt", action="store_true",
-                    help="Abrir y verificar cada imagen (lento).")
+                    help="Open and verify each image (slow).")
     args = ap.parse_args()
 
     log = get_logger("inspect")
@@ -92,8 +92,8 @@ def main() -> int:
     log.info(f"DATA_DIR = {data_dir}")
 
     if not data_dir.is_dir():
-        log.error(f"No existe DATA_DIR. Setear CATTLE_DATA_DIR o extraer el dataset. "
-                  f"Esperado: {data_dir}")
+        log.error(f"DATA_DIR does not exist. Set CATTLE_DATA_DIR or extract the dataset. "
+                  f"Expected: {data_dir}")
         return 1
 
     class_dirs = list_class_dirs(data_dir)
@@ -106,51 +106,51 @@ def main() -> int:
     n_mean = total / n_classes if n_classes else 0.0
 
     print("\n" + "=" * 60)
-    print("REPORTE DE INSPECCIÓN — Fase 0")
+    print("INSPECTION REPORT — Phase 0")
     print("=" * 60)
-    print(f"Nº de clases (carpetas)   : {n_classes}")
-    print(f"Total de imágenes         : {total}")
-    print(f"Imágenes por clase  min   : {n_min}")
-    print(f"                    max   : {n_max}")
-    print(f"                    media : {n_mean:.1f}")
-    print(f"Extensiones presentes     : {dict(ext_counter)}")
+    print(f"Number of classes (folders) : {n_classes}")
+    print(f"Total images                : {total}")
+    print(f"Images per class  min       : {n_min}")
+    print(f"                  max       : {n_max}")
+    print(f"                  mean      : {n_mean:.1f}")
+    print(f"Extensions present          : {dict(ext_counter)}")
 
-    print("\nHistograma (imágenes por clase):")
+    print("\nHistogram (images per class):")
     for label, c in histogram(per_class):
         print(f"  {label} | {'#' * c} ({c})")
 
-    print("\n5 clases con MENOS imágenes:")
+    print("\n5 classes with FEWEST images:")
     for name, c in sorted(per_class.items(), key=lambda x: x[1])[:5]:
         print(f"  {name}: {c}")
-    print("5 clases con MÁS imágenes:")
+    print("5 classes with MOST images:")
     for name, c in sorted(per_class.items(), key=lambda x: x[1], reverse=True)[:5]:
         print(f"  {name}: {c}")
 
-    # ---- Sanity checks contra config.py ----
+    # ---- Sanity checks against config.py ----
     print("\n" + "-" * 60)
-    print("SANITY CHECKS (contra config.py)")
+    print("SANITY CHECKS (against config.py)")
     print("-" * 60)
     checks = [
-        ("nº de clases", n_classes, config.NUM_CLASSES),
-        ("total imágenes", total, config.EXPECTED_IMAGES),
-        ("min imgs/clase", n_min, config.MIN_IMAGES_PER_CLASS),
-        ("max imgs/clase", n_max, config.MAX_IMAGES_PER_CLASS),
+        ("num classes", n_classes, config.NUM_CLASSES),
+        ("total images", total, config.EXPECTED_IMAGES),
+        ("min imgs/class", n_min, config.MIN_IMAGES_PER_CLASS),
+        ("max imgs/class", n_max, config.MAX_IMAGES_PER_CLASS),
     ]
     all_ok = True
     for label, got, exp in checks:
         ok = got == exp
         all_ok &= ok
-        print(f"  [{'OK ' if ok else 'MISMATCH'}] {label}: got={got} esperado={exp}")
+        print(f"  [{'OK ' if ok else 'MISMATCH'}] {label}: got={got} expected={exp}")
 
     corrupt: list[str] = []
     if args.check_corrupt:
-        print("\nVerificando imágenes corruptas (esto tarda)...")
+        print("\nChecking for corrupt images (this takes a while)...")
         corrupt = find_corrupt(class_dirs)
-        print(f"  Imágenes corruptas/ilegibles: {len(corrupt)}")
+        print(f"  Corrupt/unreadable images: {len(corrupt)}")
         for c in corrupt[:10]:
             print(f"    {c}")
 
-    # ---- Guardar reporte ----
+    # ---- Save report ----
     config.ensure_output_dirs()
     report = {
         "data_dir": str(data_dir),
@@ -167,14 +167,14 @@ def main() -> int:
     }
     out = config.RESULTS_DIR / "00_inspect_report.json"
     save_json(report, out)
-    print(f"\nReporte guardado en: {out}")
+    print(f"\nReport saved to: {out}")
 
     print("\n" + "=" * 60)
     if all_ok:
-        print("RESULTADO: sanity checks OK. Listo para Fase 1.")
+        print("RESULT: sanity checks OK. Ready for Phase 1.")
     else:
-        print("RESULTADO: hay MISMATCHES. Revisar config.py / DEVIATIONS.md "
-              "antes de avanzar.")
+        print("RESULT: MISMATCHES found. Review config.py / DEVIATIONS.md "
+              "before proceeding.")
     print("=" * 60)
     return 0
 

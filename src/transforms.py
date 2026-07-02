@@ -1,12 +1,12 @@
-"""transforms.py — Preprocesamiento y data augmentation (receta del paper).
+"""transforms.py — Preprocessing and data augmentation (paper recipe).
 
 PAPER:
-- Resolución 300x300.
-- Normalización: intensidades a [0,1] (ToTensor ya lo hace). NO mean/std de ImageNet.
-- Data augmentation (solo en train): flip horizontal, brillo (factor 0.2–0.5),
-  rotación aleatoria [-15, +15], blur gaussiano con kernel ∈ {1,3,5}.
+- Resolution 300×300.
+- Normalization: intensities to [0,1] (ToTensor already does this). No ImageNet mean/std.
+- Data augmentation (train only): horizontal flip, brightness (factor 0.2–0.5),
+  random rotation [-15, +15], Gaussian blur with kernel ∈ {1,3,5}.
 
-La normalización ImageNet queda como flag configurable (default OFF) para experimentar.
+ImageNet normalization is left as a configurable flag (default OFF) for experiments.
 """
 from __future__ import annotations
 
@@ -18,22 +18,22 @@ import config
 def build_transforms(train: bool,
                      image_size: int = config.IMAGE_SIZE,
                      use_imagenet_norm: bool = config.USE_IMAGENET_NORM) -> transforms.Compose:
-    """Devuelve el pipeline de transforms.
+    """Return the transform pipeline.
 
     Args:
-        train: si True incluye la data augmentation del paper; si False es el
-            pipeline determinista de val/test (solo resize + ToTensor).
-        image_size: lado del cuadrado de entrada (PAPER: 300).
-        use_imagenet_norm: si True agrega Normalize(mean,std) de ImageNet
-            (NOSOTROS, default OFF; el paper usa [0,1] crudo).
+        train: if True, includes the paper's data augmentation; if False, the
+            deterministic val/test pipeline (resize + ToTensor only).
+        image_size: side of the square input (PAPER: 300).
+        use_imagenet_norm: if True, appends Normalize(mean, std) from ImageNet
+            (OUR CHOICE, default OFF; the paper uses raw [0,1]).
     """
     ops: list = [transforms.Resize((image_size, image_size))]
 
     if train:
-        # PAPER: augmentation solo en train.
+        # PAPER: augmentation on train only.
         ops += _aug_ops()
 
-    # ToTensor: PIL [0,255] -> tensor [0,1]. Esta es la normalización del paper.
+    # ToTensor: PIL [0,255] → tensor [0,1]. This is the paper's normalization.
     ops.append(transforms.ToTensor())
 
     if use_imagenet_norm:
@@ -44,10 +44,10 @@ def build_transforms(train: bool,
 
 
 def _aug_ops() -> list:
-    """Ops de data augmentation del paper (flip / brillo / rotación / blur), nivel PIL.
+    """Paper augmentation ops (flip / brightness / rotation / blur), PIL level.
 
-    Compartido entre `build_transforms(train=True)` y `build_pil_aug_transform` (precompute)
-    para que el augmentation se defina en un solo lugar.
+    Shared between `build_transforms(train=True)` and `build_pil_aug_transform` (precompute)
+    so that augmentation is defined in exactly one place.
     """
     blur_choices = [transforms.GaussianBlur(kernel_size=k)
                     for k in config.AUG_BLUR_KERNELS]
@@ -60,9 +60,9 @@ def _aug_ops() -> list:
 
 
 def build_pil_aug_transform(image_size: int = config.IMAGE_SIZE) -> transforms.Compose:
-    """Resize + augmentation, SIN ToTensor → devuelve una imagen PIL.
+    """Resize + augmentation, WITHOUT ToTensor → returns a PIL image.
 
-    Para precomputar las imágenes sintéticas a disco (scripts/04_precompute_aug.py):
-    se aplica una vez y se guarda el resultado como archivo.
+    Used to precompute synthetic images to disk (scripts/04_precompute_aug.py):
+    applied once and the result is saved as a file.
     """
     return transforms.Compose([transforms.Resize((image_size, image_size)), *_aug_ops()])

@@ -1,4 +1,4 @@
-"""utils.py — Determinismo, logging e I/O. Único lugar donde se fijan seeds."""
+"""utils.py — Determinism, logging, and I/O. The only place where seeds are fixed."""
 from __future__ import annotations
 
 import json
@@ -12,10 +12,10 @@ import numpy as np
 
 
 def set_seed(seed: int, deterministic: bool = True) -> None:
-    """Fija las semillas de random, numpy y torch (CPU + CUDA) en un solo lugar.
+    """Fix seeds for random, numpy, and torch (CPU + CUDA) in a single place.
 
-    `torch` se importa adentro para que utils funcione aunque torch no esté
-    instalado (p.ej. corriendo solo la inspección de datos de Fase 0).
+    `torch` is imported inside so that utils works even if torch is not installed
+    (e.g. when only running the Phase 0 data inspection).
     """
     os.environ["PYTHONHASHSEED"] = str(seed)
     random.seed(seed)
@@ -33,7 +33,7 @@ def set_seed(seed: int, deterministic: bool = True) -> None:
 
 
 def get_device() -> str:
-    """'cuda' si hay GPU disponible, si no 'cpu'."""
+    """'cuda' if a GPU is available, otherwise 'cpu'."""
     try:
         import torch
 
@@ -43,9 +43,9 @@ def get_device() -> str:
 
 
 def get_logger(name: str = "cattle", logfile: Path | None = None) -> logging.Logger:
-    """Logger legible a stdout (y opcionalmente a archivo)."""
+    """Human-readable logger to stdout (and optionally to a file)."""
     logger = logging.getLogger(name)
-    if logger.handlers:  # ya configurado
+    if logger.handlers:  # already configured
         return logger
     logger.setLevel(logging.INFO)
     fmt = logging.Formatter("[%(asctime)s] %(levelname)s %(message)s", "%H:%M:%S")
