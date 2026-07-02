@@ -1,0 +1,29 @@
+{
+  "ckpt": "outputs/checkpoints/cmpd300_arcface.pt",
+  "single_shot": true,
+  "gap_source": {
+    "rank1": 0.595692608908468,
+    "rank5": 0.7459618208516887,
+    "mAP": 0.5843845523414047,
+    "n_probe": 2043,
+    "n_gallery": 579,
+    "n_ids_gallery": 349,
+    "split": "by_session_single",
+    "gallery_shots": 1,
+    "n_ids_total": 459,
+    "n_ids_used": 349,
+    "n_ids_dropped_lt_min_sessions": 110,
+    "min_sessions": 2,
+    "avg_sessions_per_id": 5.25,
+    "encoder": "cmpd300_arcface.pt"
+  },
+  "gap_imagenet": {
+    "rank1": 0.723935389133627,
+    "rank5": 0.846793930494371,
+    "mAP": 0.6988432552295661,
+    "n_probe": 2043,
+    "n_gallery": 579,
+    "n_ids_gallery": 349,
+    "encoder": "imagenet_resnet50"
+  }
+}

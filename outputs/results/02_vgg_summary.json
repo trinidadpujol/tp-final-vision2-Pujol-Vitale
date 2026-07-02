@@ -1,0 +1,29 @@
+{
+  "model": "vgg16_bn",
+  "epochs": 50,
+  "seeds": [
+    0
+  ],
+  "device": "cuda",
+  "smoke": false,
+  "summary": {
+    "wce_aug": {
+      "n_runs": 1,
+      "test_global_mean": 0.9696,
+      "test_global_std": 0.0,
+      "test_balanced_mean": 0.9687,
+      "test_balanced_std": 0.0,
+      "runs": [
+        {
+          "seed": 0,
+          "best_val_acc": 0.9773333333333334,
+          "test_global_acc": 0.9695740365111561,
+          "test_balanced_acc": 0.9686877131462097,
+          "ms_per_image": 5.54,
+          "checkpoint": "/home/benjavitale/tp-final-vision2-Pujol-Vitale/outputs/checkpoints/vgg16_bn_wce_aug_s0_best.pt",
+          "perclass_csv": "/home/benjavitale/tp-final-vision2-Pujol-Vitale/outputs/results/perclass_vgg16_bn_wce_aug_s0.csv"
+        }
+      ]
+    }
+  }
+}

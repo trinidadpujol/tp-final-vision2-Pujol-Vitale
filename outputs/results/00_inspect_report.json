@@ -1,5 +1,5 @@
 {
-  "data_dir": "/Users/benjavitale/Documents/GitHub/tp-final-vision2-Pujol-Vitale/data_local/BeefCattle_Muzzle_Individualized",
+  "data_dir": "/home/benjavitale/data/muzzle/BeefCattle_Muzzle_Individualized",
   "n_classes": 268,
   "total_images": 4923,
   "min_per_class": 4,

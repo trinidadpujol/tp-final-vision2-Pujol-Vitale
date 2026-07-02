@@ -1,0 +1,46 @@
+{
+  "mode": "dann",
+  "target": "/home/benjavitale/data/cows_face_muzzle",
+  "n_classes": 300,
+  "epochs": 40,
+  "feat_dim": 512,
+  "lam_max": 0.5,
+  "warmup_epochs": 0,
+  "split": "by_session_single",
+  "gallery_shots": 1,
+  "n_ids_total": 459,
+  "n_ids_used": 349,
+  "n_ids_dropped_lt_min_sessions": 110,
+  "min_sessions": 2,
+  "avg_sessions_per_id": 5.25,
+  "n_gallery": 579,
+  "n_probe": 2043,
+  "imagenet": {
+    "rank1": 0.723935389133627,
+    "rank5": 0.846793930494371,
+    "mAP": 0.6988432552295661,
+    "n_probe": 2043,
+    "n_gallery": 579,
+    "n_ids_gallery": 349
+  },
+  "dann_best": {
+    "rank1": 0.701419481155164,
+    "rank5": 0.8379833578071464,
+    "mAP": 0.6760273480361987,
+    "n_probe": 2043,
+    "n_gallery": 579,
+    "n_ids_gallery": 349,
+    "epoch": 5
+  },
+  "dann_final": {
+    "rank1": 0.6945668135095447,
+    "rank5": 0.8281938325991189,
+    "mAP": 0.6665389299791751,
+    "n_probe": 2043,
+    "n_gallery": 579,
+    "n_ids_gallery": 349,
+    "epoch": 40
+  },
+  "best_beats_final": true,
+  "elapsed_sec": 837.5
+}

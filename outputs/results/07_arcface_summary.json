@@ -1,0 +1,11 @@
+{
+  "encoder": "arcface",
+  "num_classes": 300,
+  "epochs": 40,
+  "arc_s": 30.0,
+  "arc_m": 0.5,
+  "image_size": 224,
+  "use_imagenet_norm": true,
+  "checkpoint": "/home/benjavitale/tp-final-vision2-Pujol-Vitale/outputs/checkpoints/cmpd300_arcface.pt",
+  "elapsed_sec": 312.7
+}

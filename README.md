@@ -18,7 +18,7 @@ Muzzle Images and Deep Learning Techniques*, Animals 12(11):1453.
 
 - **Task:** closed-set classification. 268 cattle = 268 classes. Given a muzzle image, predict the individual.
 - **Dataset:** Zenodo Muzzle DB — 268 cattle, 4923 muzzle images.
-- **Main model (replicates the paper):** VGG16_BN — test accuracy: `<fill in>` (target: ~96–98%+; paper reports 98.7%).
+- **Main model (replicates the paper):** VGG16_BN — best test accuracy **96.99%** (`ce_aug`, 3 seeds; 95.98–96.99% across variants; target ~96–98%+, paper reports 98.7%).
 - **Own backbone:** ResNet-50, trained in parallel as the starting point for Stage 2.
 - Deviations from the paper are documented in [`DEVIATIONS.md`](DEVIATIONS.md).
 
@@ -28,11 +28,12 @@ Muzzle Images and Deep Learning Techniques*, Animals 12(11):1453.
   gallery/probe with disjoint identities, Rank-1 and mAP metrics.
 - **Source dataset:** CMPD300 — bovine muzzle dataset with pre-existing splits.
 - **Target domain:** bovine face dataset (Ahmed) and Zenodo muzzle dataset (cross-dataset).
-- **Main finding:** a plain ImageNet ResNet-50 matches the muzzle-specialized encoder across all
-  three experiments (random split, session split, single-shot). Conclusion: in these datasets
-  there is no domain adaptation gap attributable to the muzzle modality that is worth closing
-  with adaptation techniques. This is documented with Grad-CAM visualizations over cosine
-  similarity of embeddings.
+- **Main finding:** a plain ImageNet ResNet-50 (no cattle training) matches or beats **every**
+  muzzle-specialized encoder tried — classification (CE), metric learning (ArcFace), and
+  domain-adversarial adaptation (DANN, including a warm-started variant). Specializing on the
+  source dataset transfers *worse*, not better. Conclusion: in these datasets muzzle biometrics
+  do **not** transfer cross-domain; the limit is the data/domain, not the model. Full evidence in
+  [`RESULTS_STAGE2.md`](RESULTS_STAGE2.md); Grad-CAM over cosine similarity helps explain why.
 
 ---
 
@@ -43,6 +44,7 @@ tp-final-vision2-Pujol-Vitale/
 ├── config.py                     # SINGLE source of truth for paths, hyperparameters, seeds
 ├── requirements.txt              # pinned dependencies
 ├── DEVIATIONS.md                 # all deviations from the paper's recipe, documented
+├── RESULTS_STAGE2.md             # Stage 2 evidence: re-ID cross-domain + domain adaptation
 │
 ├── src/                          # reusable logic (not scripts, not notebooks)
 │   ├── dataset.py                # MuzzleDataset + make_dataloader
@@ -66,6 +68,9 @@ tp-final-vision2-Pujol-Vitale/
 │   ├── 04_precompute_aug.py      # Stage 1: additive augmentation precomputed to disk
 │   ├── 05_train_source.py        # Stage 2: ResNet-50 encoder on CMPD300
 │   ├── 06_eval_reid.py           # Stage 2: re-ID harness + ImageNet baseline
+│   ├── 07_train_arcface.py       # Stage 2: ArcFace metric-learning encoder (CMPD300)
+│   ├── 08_train_dann.py          # Stage 2: DANN domain-adversarial (source→target)
+│   ├── crop_muzzles.py           # Stage 2: zero-shot muzzle crop from faces (GroundingDINO)
 │   ├── download_zenodo.py        # utility: download Zenodo dataset
 │   └── kaggle_upload.py          # utility: upload datasets to Kaggle via kagglehub
 │
@@ -163,7 +168,8 @@ Path resolved from `CMPD300_DATA_DIR` (env) → `/kaggle/input/.../Baseline` →
 
 Bovine face dataset (~13.9 GB). A subset is extracted directly in the Colab notebooks.
 Not configured in `config.py`; notebooks handle it from Google Drive.
-Reference: `<fill in>`.
+Reference: Cows Frontal Face Dataset — Zenodo record 10535934. Muzzles cropped from these faces
+with `scripts/crop_muzzles.py` (GroundingDINO zero-shot).
 
 ---
 
@@ -288,6 +294,23 @@ Key flags:
 | `--by-session` | Split by capture session (avoids splitting a burst between gallery and probe) |
 | `--ckpt` | Path to encoder checkpoint (default: `outputs/checkpoints/cmpd300_source.pt`) |
 
+**Phase 7 — Alternative encoders + domain adaptation (this work)**
+
+```bash
+# Muzzle crop from faces (zero-shot, GroundingDINO) — needs: pip install "transformers==4.44.2"
+python scripts/crop_muzzles.py --faces-dir /path/to/Ahmed --out-dir ~/data/cows_face_muzzle
+
+# ArcFace metric-learning encoder on CMPD300
+python scripts/07_train_arcface.py --train-dir /path/to/CMPD300/train --epochs 40
+
+# DANN domain-adversarial (source=CMPD300, target=unlabeled crops), + baseline ablation
+python scripts/08_train_dann.py --target-dir ~/data/cows_face_muzzle --mode dann \
+    --warmup-epochs 5 --lam-max 0.5 --feat-dim 512 --dropout 0.1 --gamma 5 --eval-every 5
+python scripts/08_train_dann.py --target-dir ~/data/cows_face_muzzle --mode baseline
+
+# Re-evaluate any encoder with the harness above (--ckpt outputs/checkpoints/<encoder>.pt)
+```
+
 ### Colab / Kaggle notebooks
 
 The notebooks in `notebooks/` orchestrate the scripts above in GPU environments:
@@ -310,14 +333,18 @@ All logic lives in `src/` and `scripts/`; notebooks only orchestrate.
 
 ### Stage 1
 
-| Model | Variant | Seeds | Test accuracy (mean ± std) |
-|---|---|---|---|
-| VGG16_BN | ce | 3 | `<fill in>` |
-| VGG16_BN | ce_aug | 3 | `<fill in>` |
-| VGG16_BN | wce | 3 | `<fill in>` |
-| VGG16_BN | wce_aug | 3 | `<fill in>` |
-| ResNet-50 | freeze | 1 | `<fill in>` |
-| ResNet-50 | finetune | 1 | `<fill in>` |
+| Model | Variant | Seeds | Test global (mean ± std) | Test balanced (mean ± std) |
+|---|---|---|---|---|
+| VGG16_BN | ce | 3 | 0.9598 ± 0.0027 | 0.9317 ± 0.0019 |
+| VGG16_BN | ce_aug | 3 | 0.9699 ± 0.0017 | 0.9493 ± 0.0011 |
+| VGG16_BN | wce | 3 | 0.9648 ± 0.0033 | 0.9615 ± 0.0025 |
+| VGG16_BN | wce_aug | 3 | 0.9686 ± 0.0014 | 0.9692 ± 0.0028 |
+| ResNet-50 | freeze | 1 | _(pending)_ | _(pending)_ |
+| ResNet-50 | finetune | 1 | _(pending)_ | _(pending)_ |
+
+> **Paper's thesis reproduced.** Global accuracy is similar across variants (~0.96–0.97),
+> but **balanced accuracy** (equal weight to rare classes) climbs `ce` 0.9317 → `wce` 0.9615
+> → `wce_aug` 0.9692: weighted CE and augmentation help the 8 classes with only 4 images.
 
 The paper reports 98.7% for VGG16_BN. The replication aims to reproduce the trend (wce and
 augmentation help the 8 classes with only 4 images), not to match the exact decimal.
@@ -331,16 +358,19 @@ Key deviations from the paper (see [`DEVIATIONS.md`](DEVIATIONS.md) for details)
 
 ### Stage 2
 
-| Experiment | Encoder | Rank-1 | mAP |
-|---|---|---|---|
-| Muzzle→face gap (Ahmed), random split | CMPD300 | `<fill in>` | `<fill in>` |
-| Muzzle→face gap (Ahmed), random split | Plain ImageNet | `<fill in>` | `<fill in>` |
-| Muzzle→face gap (Ahmed), session split, single-shot | CMPD300 | `<fill in>` | `<fill in>` |
-| Muzzle→face gap (Ahmed), session split, single-shot | Plain ImageNet | `<fill in>` | `<fill in>` |
-| Muzzle→muzzle gap (Zenodo), single-shot | CMPD300 | `<fill in>` | `<fill in>` |
-| Muzzle→muzzle gap (Zenodo), single-shot | Plain ImageNet | `<fill in>` | `<fill in>` |
+Protocol: session split + single-shot, Rank-1. CMPD300-trained encoder vs. plain ImageNet.
 
-**Main finding:** across all three experiments, a plain ImageNet ResNet-50 (with no muzzle
+| Experiment | CMPD300 encoder | Plain ImageNet |
+|---|---|---|
+| Muzzle→face (Ahmed crops, 349 ids) | 0.724 | 0.724 |
+| Muzzle→muzzle (Zenodo, 268 ids) | 0.864 | 0.894 |
+
+Beyond the classification encoder, **ArcFace** (metric learning) and **DANN** (domain-adversarial,
+including a variant warm-started from the source encoder) were also tested — **none beats a plain
+ImageNet ResNet-50**, and specializing harder transfers *worse*. Full breakdown (all encoders,
+per-epoch DANN transfer curve, muzzle-crop resolution) in [`RESULTS_STAGE2.md`](RESULTS_STAGE2.md).
+
+**Main finding:** across all experiments, a plain ImageNet ResNet-50 (with no muzzle
 training whatsoever) matches or outperforms the CMPD300-specialized encoder. This indicates
 that the observed performance does not measure muzzle biometric recognition, but generic visual
 similarity that the ImageNet backbone already captures. There is no domain adaptation gap
@@ -364,11 +394,12 @@ attends to when computing cosine similarity, helping explain why ImageNet matche
 > [https://zenodo.org/record/6324361](https://zenodo.org/record/6324361)
 
 **Stage 2 source dataset:**
-> CMPD300 — bovine muzzle dataset with pre-existing splits.
-> Full reference: `<fill in>`
+> CMPD300 — bovine muzzle dataset with pre-existing splits (train/val/test = MuzzleSplit).
+> Full reference: _(pending — add the original CMPD300 source citation)_
 
 **Stage 2 target dataset:**
-> Bovine face dataset (Ahmed). `<fill in>`
+> Bovine face dataset (Ahmed) — Cows Frontal Face Dataset, Zenodo record 10535934.
+> [https://zenodo.org/records/10535934](https://zenodo.org/records/10535934)
 
 ---
 
